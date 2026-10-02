@@ -1,0 +1,16 @@
+# Senhas e chaves — nunca versionar
+firmware/**/segredos.h
+
+# Arquivos de build
+*.o
+*.elf
+*.bin
+
+# Arquivos de log
+*.log
+
+# Arquivos temporários
+*.tmp
+
+# Arquivos de estudo
+pala-nekogotchi
