@@ -59,10 +59,15 @@ static bool postar(JsonDocument &pedido, JsonDocument &resposta) {
     return false;
   }
 
-  DeserializationError erro = deserializeJson(resposta, http.getStream());
+  // getString() e não getStream(): o Google responde em pedaços ("chunked"),
+  // e só o getString() remonta o corpo sem os marcadores de tamanho no meio.
+  String texto = http.getString();
   http.end();
+  DeserializationError erro = deserializeJson(resposta, texto);
   if (erro) {
-    Serial.printf("Agenda: resposta invalida (%s)\n", erro.c_str());
+    // Não imprime o corpo: pode conter títulos de eventos
+    Serial.printf("Agenda: resposta invalida (%s), %u bytes, comeca com '%c'\n",
+                  erro.c_str(), texto.length(), texto.length() ? texto[0] : '-');
     return false;
   }
   if (!(resposta["ok"] | false)) {
