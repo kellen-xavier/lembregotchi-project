@@ -32,18 +32,22 @@ static time_t   petSyncDesde = 0;               // hora (do servidor) da última
 static time_t   petAgendaInicio = 0;            // quando começou a acompanhar a agenda
 static uint32_t petProximoSync = 0;             // millis() da próxima tentativa
 static time_t   petAgendaHora = 0;              // quando sincronizou com sucesso pela última vez
-static ResumoAgenda petAgenda = {};             // último resumo (os pendentes serão usados no passo 7)
+static ResumoAgenda petAgenda = {};             // último resumo; pendentes[0] é o próximo "Concluiu?"
 
-enum PetView { PV_MAIN, PV_STATS, PV_ACTION };
+enum PetView { PV_MAIN, PV_STATS, PV_ACTION, PV_CHECK };
 static PetView  petView = PV_MAIN;
-static int      petSel  = 0;           // 0 Comer, 1 Brincar, 2 Carinho, 3 Status
+static int      petSel  = 0;           // 0 Comer, 1 Brincar, 2 Carinho, 3 Agenda, 4 Status
 static uint32_t petActionUntil = 0;
+static bool     petVoltarParaCheck = false;   // depois da pose, volta para o próximo pendente
 
 static uint32_t petUltimoTick   = 0;
 static uint32_t petUltimoSalvar = 0;
 static int      petUltimoDesenho = -1; // "assinatura" do que está na tela
 
-static const char *ACOES[4] = { "Comer", "Brincar", "Carinho", "Status" };
+#define N_ACOES 5
+static const char *ACOES[N_ACOES] = { "Comer", "Brincar", "Carinho", "Agenda", "Status" };
+
+static void petAbrirCheck();   // definida mais abaixo
 
 static Preferences prefs;
 
@@ -149,6 +153,7 @@ static void petSincronizarAgenda() {
   int total = r.sim + r.nao;
   petHappy = total > 0 ? clampStat(100.0f * r.sim / total) : AGENDA_HUMOR_SEM_EVENTOS;
 
+  bool chegouPendente = r.nPendentes > petAgenda.nPendentes;
   petAgenda = r;
   petAgendaInicio = inicio;
   petAgendaHora = agoraEpoch();
@@ -157,6 +162,9 @@ static void petSincronizarAgenda() {
 
   Serial.printf("Agenda: %d novos, semana %d sim / %d nao, %d pendentes\n",
                 r.criados, r.sim, r.nao, r.nPendentes);
+
+  // Evento novo terminou: o gato pergunta sozinho. Na tela de check, atualiza a lista.
+  if (petView == PV_CHECK || (chegouPendente && petView == PV_MAIN)) petAbrirCheck();
 }
 
 // ─── Humor → desenho e cores ─────────────────────────────────────────────────
@@ -217,15 +225,29 @@ static void petDrawMain() {
   // O gato (150x150) no centro
   gfx->drawBitmap((TELA_W - CAT_W) / 2, 26, spriteDoHumor(h), CAT_W, CAT_H, tinta);
 
+  // Aviso de eventos esperando "Concluiu?"
+  if (petAgenda.nPendentes > 0) {
+    gfx->fillCircle(206, 44, 13, COR(220, 50, 50));
+    char n[4];
+    snprintf(n, sizeof(n), "%d", petAgenda.nPendentes);
+    gfx->setTextSize(2);
+    gfx->setTextColor(RGB565_WHITE);
+    gfx->setCursor(201, 37);
+    gfx->print(n);
+  }
+
   // Ação escolhida, com setinhas dos lados
   gfx->fillRoundRect(30, 184, 180, 34, 10, tinta);
   gfx->fillTriangle(42, 201, 52, 193, 52, 209, fundo);     // ◀
   gfx->fillTriangle(198, 201, 188, 193, 188, 209, fundo);  // ▶
-  textoCentro(194, ACOES[petSel], 2, fundo);
+  char rotulo[16];
+  if (petSel == 3 && petAgenda.nPendentes > 0) snprintf(rotulo, sizeof(rotulo), "Agenda(%d)", petAgenda.nPendentes);
+  else                                         snprintf(rotulo, sizeof(rotulo), "%s", ACOES[petSel]);
+  textoCentro(194, rotulo, 2, fundo);
 
-  // Bolinhas mostrando em qual das 4 ações estamos
-  for (int i = 0; i < 4; i++) {
-    int cx = TELA_W / 2 - 21 + i * 14;
+  // Bolinhas mostrando em qual das ações estamos
+  for (int i = 0; i < N_ACOES; i++) {
+    int cx = TELA_W / 2 - (N_ACOES - 1) * 7 + i * 14;
     if (i == petSel) gfx->fillCircle(cx, 229, 4, tinta);
     else             gfx->drawCircle(cx, 229, 4, tinta);
   }
@@ -297,11 +319,151 @@ static void mostrar() {
 // Redesenha a tela principal só quando algo visível mudou
 static void petRedesenharSePreciso(bool forcar) {
   // Junta humor, ação e os três valores (0–100) num número só para comparar
-  int assinatura = (((int)petHumor() * 4 + petSel) * 101 + (int)petHunger) * 101 * 101
+  int assinatura = ((((int)petHumor() * N_ACOES + petSel) * (AGENDA_MAX_PENDENTES + 1)
+                     + petAgenda.nPendentes) * 101 + (int)petHunger) * 101 * 101
                    + (int)petHappy * 101 + (int)petEnergy;
   if (!forcar && assinatura == petUltimoDesenho) return;
   petUltimoDesenho = assinatura;
   petDrawMain();
+  mostrar();
+}
+
+// ─── Check: "Concluiu?" ──────────────────────────────────────────────────────
+
+// A fonte da tela só tem ASCII: troca letras acentuadas (UTF-8) pela letra sem acento
+// e descarta o resto (emojis, ✅/❌ etc.).
+static void asciiSimples(const char *in, char *out, size_t n) {
+  static const char MIN[] = "aaaaaa?ceeeeiiii?nooooo??uuuu";   // 0xC3 0xA0..0xBC
+  static const char MAI[] = "AAAAAA?CEEEEIIII?NOOOOO??UUUU";   // 0xC3 0x80..0x9C
+  size_t j = 0;
+  for (size_t i = 0; in[i] && j + 1 < n; ) {
+    uint8_t c = (uint8_t)in[i];
+    if (c < 0x80) { out[j++] = (char)c; i++; continue; }
+    if (c == 0xC3 && ((uint8_t)in[i + 1] & 0xC0) == 0x80) {
+      uint8_t d = (uint8_t)in[i + 1];
+      char t = '?';
+      if (d >= 0xA0 && d <= 0xBC) t = MIN[d - 0xA0];
+      else if (d >= 0x80 && d <= 0x9C) t = MAI[d - 0x80];
+      if (t != '?') out[j++] = t;
+      i += 2;
+      continue;
+    }
+    // outros caracteres (emojis etc.): pula o byte inicial e os de continuação (10xxxxxx),
+    // sem nunca passar do fim do texto
+    i++;
+    while (((uint8_t)in[i] & 0xC0) == 0x80) i++;
+  }
+  out[j] = 0;
+  // tira espaços do começo (sobram quando o título começava com emoji)
+  size_t k = 0;
+  while (out[k] == ' ') k++;
+  if (k) memmove(out, out + k, strlen(out + k) + 1);
+}
+
+// Quebra o título em até 3 linhas de 18 letras (tamanho 2 = 12 px por letra)
+static void desenharTitulo(const char *titulo, int y, uint16_t cor) {
+  const int MAX = 18;
+  char resto[48];
+  strlcpy(resto, titulo, sizeof(resto));
+  char *p = resto;
+  for (int linha = 0; linha < 3 && *p; linha++) {
+    char buf[MAX + 1];
+    int len = strlen(p);
+    int corte = len;
+    if (len > MAX) {
+      corte = MAX;
+      while (corte > 0 && p[corte] != ' ') corte--;   // quebra no espaço
+      if (corte == 0) corte = MAX;                   // palavra enorme: corta no meio
+      if (linha == 2) {                              // última linha: reticências
+        corte = MAX - 3;
+        memcpy(buf, p, corte);
+        strcpy(buf + corte, "...");
+        textoCentro(y + linha * 22, buf, 2, cor);
+        return;
+      }
+    }
+    memcpy(buf, p, corte);
+    buf[corte] = 0;
+    textoCentro(y + linha * 22, buf, 2, cor);
+    p += corte;
+    while (*p == ' ') p++;
+  }
+}
+
+static void petDrawCheck() {
+  uint16_t fundo = COR(255, 244, 214), tinta = COR(60, 40, 30);
+  gfx->fillScreen(fundo);
+
+  const EventoPendente &e = petAgenda.pendentes[0];
+  textoCentro(8, "Concluiu?", 3, tinta);
+
+  char linha[24];
+  snprintf(linha, sizeof(linha), "1 de %d", petAgenda.nPendentes);
+  textoCentro(38, linha, 1, COR(140, 120, 100));
+
+  char titulo[48];
+  asciiSimples(e.titulo, titulo, sizeof(titulo));
+  if (!titulo[0]) strlcpy(titulo, "(sem titulo)", sizeof(titulo));
+  gfx->drawRoundRect(10, 54, TELA_W - 20, 76, 8, tinta);
+  desenharTitulo(titulo, 62, tinta);
+
+  // Quando terminou
+  struct tm t;
+  time_t fim = e.fim;
+  localtime_r(&fim, &t);
+  snprintf(linha, sizeof(linha), "terminou %02d:%02d", t.tm_hour, t.tm_min);
+  textoCentro(138, linha, 2, COR(140, 120, 100));
+
+  // Botões
+  gfx->fillRoundRect(20, 164, 200, 28, 8, COR(60, 150, 70));
+  textoCentro(171, "BOOT = sim", 2, RGB565_WHITE);
+  gfx->fillRoundRect(20, 198, 200, 28, 8, COR(190, 70, 60));
+  textoCentro(205, "PLUS = nao", 2, RGB565_WHITE);
+  textoCentro(230, "PWR = depois", 1, COR(140, 120, 100));
+}
+
+// Abre a tela de check com o primeiro pendente (ou volta ao gato se não houver)
+static void petAbrirCheck() {
+  if (petAgenda.nPendentes == 0) {
+    petView = PV_MAIN;
+    petRedesenharSePreciso(true);
+    return;
+  }
+  petView = PV_CHECK;
+  petDrawCheck();
+  mostrar();
+}
+
+// Grava a resposta no Google Calendar e só então muda a energia
+static void petResponderCheck(bool feito) {
+  // Aviso enquanto conversa com o Google (leva 1–3 s)
+  gfx->fillRoundRect(40, 100, 160, 40, 10, COR(60, 40, 30));
+  textoCentro(112, "Salvando...", 2, RGB565_WHITE);
+  mostrar();
+
+  const EventoPendente e = petAgenda.pendentes[0];
+  if (!calendarioCheck(e.id, e.fim, feito)) {
+    petVoltarParaCheck = true;
+    petStartAction(cat_sad, COR(190, 205, 230), "Sem rede");
+    mostrar();
+    return;
+  }
+
+  // Confirmado no Google: aplica no gato
+  petEnergy = clampStat(petEnergy + (feito ? AGENDA_ENERGIA_POR_CHECK : -AGENDA_ENERGIA_POR_CHECK));
+  if (feito) petAgenda.sim++; else petAgenda.nao++;
+  int total = petAgenda.sim + petAgenda.nao;
+  petHappy = clampStat(100.0f * petAgenda.sim / total);
+
+  // Tira o evento respondido da fila
+  for (int i = 1; i < petAgenda.nPendentes; i++) petAgenda.pendentes[i - 1] = petAgenda.pendentes[i];
+  petAgenda.nPendentes--;
+  petSave();
+  Serial.printf("Check: %s (energia %d)\n", feito ? "sim" : "nao", (int)petEnergy);
+
+  petVoltarParaCheck = petAgenda.nPendentes > 0;
+  if (feito) petStartAction(cat_happy, COR(200, 240, 190), "Boa!");
+  else       petStartAction(cat_sad,   COR(190, 205, 230), "Tudo bem");
   mostrar();
 }
 
@@ -324,7 +486,11 @@ static void petDoAction(int sel) {
       petSave();
       petStartAction(cat_purr, COR(255, 200, 220), "Purr...");
       break;
-    case 3:  // Status
+    case 3:  // Agenda
+      if (petAgenda.nPendentes > 0) { petAbrirCheck(); return; }
+      petStartAction(cat_happy, COR(200, 240, 190), "Em dia!");
+      break;
+    case 4:  // Status
       petView = PV_STATS;
       petDrawStats();
       break;
@@ -348,8 +514,13 @@ void petLoop() {
 
   if (petView == PV_ACTION) {
     if ((int32_t)(millis() - petActionUntil) >= 0) {
-      petView = PV_MAIN;
-      petRedesenharSePreciso(true);
+      if (petVoltarParaCheck) {
+        petVoltarParaCheck = false;
+        petAbrirCheck();
+      } else {
+        petView = PV_MAIN;
+        petRedesenharSePreciso(true);
+      }
     }
     return;
   }
@@ -359,21 +530,29 @@ void petLoop() {
 
 void petPlus() {
   if (petView == PV_ACTION) return;
+  if (petView == PV_CHECK) { petResponderCheck(false); return; }   // ❌ não concluí
   if (petView == PV_STATS) {          // qualquer botão volta do Status
     petView = PV_MAIN;
     petRedesenharSePreciso(true);
     return;
   }
-  petSel = (petSel + 1) % 4;
+  petSel = (petSel + 1) % N_ACOES;
   petRedesenharSePreciso(true);
 }
 
 void petBoot() {
   if (petView == PV_ACTION) return;
+  if (petView == PV_CHECK) { petResponderCheck(true); return; }    // ✅ concluí
   if (petView == PV_STATS) {
     petView = PV_MAIN;
     petRedesenharSePreciso(true);
     return;
   }
   petDoAction(petSel);
+}
+
+void petPwr() {
+  if (petView != PV_CHECK) return;    // na tela de check: "depois" — volta ao gato
+  petView = PV_MAIN;
+  petRedesenharSePreciso(true);
 }

@@ -340,3 +340,57 @@ O ESP32 **só enxerga redes de 2,4 GHz**. Muitos roteadores têm duas redes (ex.
 
 - Use o nome da rede **2,4 GHz**, exatamente igual (maiúsculas e minúsculas contam).
 - Se o roteador junta as bandas num nome só, ative uma rede 2,4 GHz separada nas configurações dele.
+
+---
+
+## Passo 7 — "Concluiu?": o check no aparelho
+
+### Quando aparece
+
+- **Sozinha**, quando a sincronização traz um evento **novo** que já terminou;
+- pelo menu: ação **Agenda**. Ela mostra `Agenda(3)` quando há pendentes, ou "Em dia!" quando não há;
+- na tela do gato, uma **bolinha vermelha com número** avisa quantos estão esperando.
+
+### A tela
+
+```
+┌────────────────────────────┐
+│         Concluiu?          │
+│          1 de 3            │
+│ ┌────────────────────────┐ │
+│ │   Reuniao de projeto   │ │  ← título (até 3 linhas, sem acentos)
+│ └────────────────────────┘ │
+│      terminou 14:30        │
+│ [      BOOT = sim       ]  │  verde
+│ [      PLUS = nao       ]  │  vermelho
+│        PWR = depois        │
+└────────────────────────────┘
+```
+
+| Botão | Efeito |
+|---|---|
+| **BOOT** (sim) | grava `✅` no título do evento → **energia +15**, humor recalculado, pose "Boa!" |
+| **PLUS** (não) | grava `❌` no título → **energia −15**, humor recalculado, pose "Tudo bem" |
+| **PWR** (depois) | volta ao gato; o evento continua pendente (até 24 h, depois conta como "não") |
+
+Depois de responder, se houver outro pendente, a tela volta para ele.
+
+### Primeiro o Google, depois o gato
+
+A energia **só muda depois que o Google confirma** que gravou o ✅/❌. Se não houver rede, aparece
+"Sem rede" e o evento continua pendente. Assim, o gato e a agenda nunca ficam diferentes.
+
+### Títulos sem acentos
+
+A fonte da tela só tem letras sem acento (ASCII). A função `asciiSimples()` converte o texto,
+que chega da internet em **UTF-8**:
+
+| Original | Na tela |
+|---|---|
+| `Reunião de orçamento` | `Reuniao de orcamento` |
+| `✅ Almoço com João` | `Almoco com Joao` |
+| `🎉 Festa` | `Festa` |
+
+No UTF-8, letras acentuadas ocupam **2 bytes** (`ã` = `C3 A3`) e emojis ocupam **4**. A função
+troca os acentuados pela letra simples e pula o resto, avançando byte a byte para nunca passar do
+fim do texto, mesmo se o título vier cortado no meio de um emoji.

@@ -6,4 +6,5 @@
 void petBegin();   // carrega o estado salvo e desenha a tela inicial
 void petLoop();    // chamar a cada volta do loop()
 void petPlus();    // botão PLUS: próxima ação
-void petBoot();    // botão BOOT: executa a ação escolhida
+void petBoot();    // botão BOOT: executa a ação escolhida (na tela "Concluiu?": sim)
+void petPwr();     // botão PWR: na tela "Concluiu?", deixa para depois
