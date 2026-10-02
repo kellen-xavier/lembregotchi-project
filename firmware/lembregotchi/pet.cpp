@@ -29,6 +29,7 @@ static bool     petHoraAplicada = false;        // já descontou o tempo em que 
 
 // Agenda
 static time_t   petSyncDesde = 0;               // hora (do servidor) da última sincronização
+static time_t   petAgendaInicio = 0;            // quando começou a acompanhar a agenda
 static uint32_t petProximoSync = 0;             // millis() da próxima tentativa
 static time_t   petAgendaHora = 0;              // quando sincronizou com sucesso pela última vez
 static ResumoAgenda petAgenda = {};             // último resumo (os pendentes serão usados no passo 7)
@@ -68,6 +69,7 @@ static void petSave() {
   prefs.putLong64("nasc",  petNasc);
   prefs.putLong64("visto", petVisto);
   prefs.putLong64("sync",  petSyncDesde);
+  prefs.putLong64("inicio", petAgendaInicio);
   petUltimoSalvar = millis();
 }
 
@@ -79,6 +81,7 @@ static void petLoad() {
   petNasc     = prefs.getLong64("nasc", 0);
   petVisto    = prefs.getLong64("visto", 0);
   petSyncDesde = prefs.getLong64("sync", 0);
+  petAgendaInicio = prefs.getLong64("inicio", 0);
 }
 
 // ─── Passagem do tempo ───────────────────────────────────────────────────────
@@ -131,8 +134,11 @@ static void petSincronizarAgenda() {
   if (!calendarioConfigurado() || !redeConectada() || agoraEpoch() == 0) return;
   if ((int32_t)(millis() - petProximoSync) < 0) return;
 
+  // Na primeira vez, "agora" vira o início: a agenda antiga não deixa o gato triste
+  time_t inicio = petAgendaInicio ? petAgendaInicio : agoraEpoch();
+
   ResumoAgenda r;
-  if (!calendarioResumo(petSyncDesde, r)) {
+  if (!calendarioResumo(petSyncDesde, inicio, r)) {
     petProximoSync = millis() + AGENDA_RETENTAR_MS;
     return;
   }
@@ -144,6 +150,7 @@ static void petSincronizarAgenda() {
   petHappy = total > 0 ? clampStat(100.0f * r.sim / total) : AGENDA_HUMOR_SEM_EVENTOS;
 
   petAgenda = r;
+  petAgendaInicio = inicio;
   petAgendaHora = agoraEpoch();
   if (r.agora > 0) petSyncDesde = r.agora;   // próxima vez, só o que vier depois disto
   petSave();

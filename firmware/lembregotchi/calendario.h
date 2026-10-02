@@ -21,5 +21,7 @@ struct ResumoAgenda {
 };
 
 bool calendarioConfigurado();                               // URL e chave preenchidas em segredos.h?
-bool calendarioResumo(time_t desde, ResumoAgenda &r);
+// desde:  última sincronização (só conta eventos criados depois disso)
+// inicio: quando o Lembregotchi começou a acompanhar a agenda (eventos anteriores são ignorados)
+bool calendarioResumo(time_t desde, time_t inicio, ResumoAgenda &r);
 bool calendarioCheck(const char *id, time_t fim, bool feito);

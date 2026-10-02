@@ -63,3 +63,11 @@ Assim, o histórico fica visível também no celular, e o humor semanal é calcu
 | 5 | Apps Script na conta Google, testado pelo navegador |
 | 6 | ESP32 busca o resumo e aplica Comida / Energia / Humor |
 | 7 | Tela de check ("Concluiu?") com BOOT/PLUS, gravando ✅/❌ no evento |
+
+## Ajuste (2026-10-02): data de início
+
+No primeiro teste, a semana veio com `0 sim / 47 não`: todos os eventos antigos da agenda, de antes do
+Lembregotchi existir, contavam como "não concluídos", e o gato já começaria deprimido.
+
+Correção: o aparelho envia `inicio`, a hora da **primeira sincronização** (guardada na flash), e a ponte
+**ignora eventos que terminaram antes disso**: eles não pedem check e não contam como esquecidos.

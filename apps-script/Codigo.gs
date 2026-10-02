@@ -5,7 +5,7 @@
  * a chave fica em Configurações do projeto → Propriedades do script → LEMBREGOTCHI_CHAVE.
  *
  * O aparelho faz POST com um JSON:
- *   { "chave": "...", "acao": "resumo", "desde": <epoch em segundos> }
+ *   { "chave": "...", "acao": "resumo", "desde": <epoch em segundos>, "inicio": <epoch> }
  *   { "chave": "...", "acao": "check", "id": "...", "fim": <epoch>, "feito": true|false }
  */
 
@@ -33,7 +33,7 @@ function doPost(e) {
   }
 
   try {
-    if (pedido.acao === 'resumo') return resposta_(resumo_(Number(pedido.desde) || 0));
+    if (pedido.acao === 'resumo') return resposta_(resumo_(Number(pedido.desde) || 0, Number(pedido.inicio) || 0));
     if (pedido.acao === 'check')  return resposta_(check_(String(pedido.id || ''), Number(pedido.fim) || 0, pedido.feito === true));
     return resposta_({ ok: false, erro: 'acao desconhecida' });
   } catch (err) {
@@ -84,8 +84,12 @@ function epoch_(data) {
  *  - criados:   eventos criados depois de "desde" (alimentam o gato)
  *  - pendentes: eventos que terminaram nas últimas 24 h e ainda não têm ✅/❌
  *  - semana:    quantos ✅ e quantos ❌ (ou esquecidos > 24 h) nos últimos 7 dias
+ *
+ * "inicio" é quando o Lembregotchi começou a acompanhar a agenda: eventos que terminaram
+ * antes disso são ignorados (não pedem check e não contam como esquecidos).
  */
-function resumo_(desde) {
+function resumo_(desde, inicio) {
+  const inicioData = new Date((inicio || 0) * 1000);
   const agora = new Date();
   const H = 3600 * 1000, D = 24 * H;
   const cal = agenda_();
@@ -105,6 +109,7 @@ function resumo_(desde) {
     if (ev.isAllDayEvent()) return;            // eventos de dia inteiro não pedem check
     const fim = ev.getEndTime();
     if (fim > agora) return;                   // ainda não terminou
+    if (fim < inicioData) return;              // de antes do Lembregotchi existir
 
     const m = marcado_(ev.getTitle());
     if (m === 'sim') { sim++; return; }
@@ -150,7 +155,7 @@ function check_(id, fim, feito) {
 
 function testarResumo() {
   const umDiaAtras = Math.floor(Date.now() / 1000) - 24 * 3600;
-  console.log(JSON.stringify(resumo_(umDiaAtras), null, 2));
+  console.log(JSON.stringify(resumo_(umDiaAtras, umDiaAtras), null, 2));
 }
 
 function testarChaveConfigurada() {

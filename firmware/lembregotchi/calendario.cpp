@@ -72,10 +72,11 @@ static bool postar(JsonDocument &pedido, JsonDocument &resposta) {
   return true;
 }
 
-bool calendarioResumo(time_t desde, ResumoAgenda &r) {
+bool calendarioResumo(time_t desde, time_t inicio, ResumoAgenda &r) {
   JsonDocument pedido, resposta;
-  pedido["acao"]  = "resumo";
-  pedido["desde"] = (long long)desde;
+  pedido["acao"]   = "resumo";
+  pedido["desde"]  = (long long)desde;
+  pedido["inicio"] = (long long)inicio;
   if (!postar(pedido, resposta)) return false;
 
   r.agora   = (time_t)(resposta["agora"] | 0LL);

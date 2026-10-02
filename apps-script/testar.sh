@@ -17,6 +17,7 @@ CHAVE=$(valor LEMBREGOTCHI_CHAVE)
 [[ "${1:-}" == "sem-chave" ]] && CHAVE="chave-errada-de-proposito-000000000000000000000000000000000000000"
 DESDE=$(( $(date +%s) - 86400 ))
 
-printf '{"chave":"%s","acao":"resumo","desde":%d}' "$CHAVE" "$DESDE" \
+# inicio = 1 dia atrás: simula um Lembregotchi que começou ontem
+printf '{"chave":"%s","acao":"resumo","desde":%d,"inicio":%d}' "$CHAVE" "$DESDE" "$DESDE" \
   | curl -sS -L --max-time 30 -H 'Content-Type: application/json' --data-binary @- "$URL"
 echo
