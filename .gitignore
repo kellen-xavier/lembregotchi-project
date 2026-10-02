@@ -14,3 +14,11 @@ firmware/**/segredos.h
 
 # Arquivos de estudo
 pala-nekogotchi
+
+# Variáveis de ambiente
+*.env
+.env*
+
+# Ferramenta clasp do Apps Script (guarda tokens de login)
+.clasprc.json
+.clasp.json

@@ -43,3 +43,11 @@
 #define FUSO_HORARIO           "<-03>3"   // horário de Brasília (UTC−3, sem horário de verão)
 #define WIFI_TIMEOUT_MS        12000      // quanto esperar o Wi-Fi ao ligar
 #define PET_ELAPSED_CAP_H      48         // tempo desligado conta no máximo 48 h
+
+// ─── Google Calendar (ver docs/integracao-google-calendar.md) ────────────────
+#define AGENDA_COMIDA_POR_EVENTO      20    // cada evento novo na agenda alimenta o gato
+#define AGENDA_ENERGIA_POR_CHECK      15    // check "sim" sobe, "não" desce (passo 7)
+#define AGENDA_HUMOR_SEM_EVENTOS      50    // humor neutro se não houve eventos na semana
+#define AGENDA_RECOVER_ENERGY_PH      2     // com agenda, a energia vem dos checks; só descansa devagar
+#define AGENDA_SYNC_A_CADA_MS         (5UL * 60UL * 1000UL)  // busca a agenda a cada 5 min
+#define AGENDA_RETENTAR_MS            (60UL * 1000UL)        // se falhar, tenta de novo em 1 min

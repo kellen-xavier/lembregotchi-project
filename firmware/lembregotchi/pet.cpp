@@ -9,6 +9,7 @@
 #include "config.h"
 #include "pet.h"
 #include "rede.h"
+#include "calendario.h"
 #include "src/cat_sprites/cat_sprites.h"
 
 extern Arduino_GFX *gfx;   // criado em lembregotchi.ino
@@ -25,6 +26,12 @@ static uint32_t petIdadeSeg = 0;                // tempo de vida contado com a p
 static time_t   petNasc  = 0;                   // quando nasceu (hora real), 0 = ainda não sabe
 static time_t   petVisto = 0;                   // última vez que o estado foi salvo (hora real)
 static bool     petHoraAplicada = false;        // já descontou o tempo em que ficou desligado?
+
+// Agenda
+static time_t   petSyncDesde = 0;               // hora (do servidor) da última sincronização
+static uint32_t petProximoSync = 0;             // millis() da próxima tentativa
+static time_t   petAgendaHora = 0;              // quando sincronizou com sucesso pela última vez
+static ResumoAgenda petAgenda = {};             // último resumo (os pendentes serão usados no passo 7)
 
 enum PetView { PV_MAIN, PV_STATS, PV_ACTION };
 static PetView  petView = PV_MAIN;
@@ -60,6 +67,7 @@ static void petSave() {
   if (agora) petVisto = agora;
   prefs.putLong64("nasc",  petNasc);
   prefs.putLong64("visto", petVisto);
+  prefs.putLong64("sync",  petSyncDesde);
   petUltimoSalvar = millis();
 }
 
@@ -70,13 +78,15 @@ static void petLoad() {
   petIdadeSeg = prefs.getUInt("idade", 0);
   petNasc     = prefs.getLong64("nasc", 0);
   petVisto    = prefs.getLong64("visto", 0);
+  petSyncDesde = prefs.getLong64("sync", 0);
 }
 
 // ─── Passagem do tempo ───────────────────────────────────────────────────────
 static void aplicarHoras(float horas) {
   petHunger = clampStat(petHunger - PET_DECAY_HUNGER_PH   * horas);
   petHappy  = clampStat(petHappy  - PET_DECAY_HAPPY_PH    * horas);
-  petEnergy = clampStat(petEnergy + PET_RECOVER_ENERGY_PH * horas);
+  float recupera = calendarioConfigurado() ? AGENDA_RECOVER_ENERGY_PH : PET_RECOVER_ENERGY_PH;
+  petEnergy = clampStat(petEnergy + recupera * horas);
 }
 
 // Roda uma vez, quando a hora real fica conhecida: desconta o tempo em que a placa
@@ -111,6 +121,35 @@ static void petTick() {
   petIdadeSeg += (dt / 1000) * PET_VELOCIDADE;
 
   if (agora - petUltimoSalvar >= PET_SALVAR_A_CADA_MS) petSave();
+}
+
+// ─── Agenda → Comida e Humor ─────────────────────────────────────────────────
+// Comida: +20 por evento criado desde a última sincronização.
+// Humor:  taxa de conclusão (✅ / (✅ + ❌)) dos últimos 7 dias.
+// Energia vem dos checks no aparelho (passo 7).
+static void petSincronizarAgenda() {
+  if (!calendarioConfigurado() || !redeConectada() || agoraEpoch() == 0) return;
+  if ((int32_t)(millis() - petProximoSync) < 0) return;
+
+  ResumoAgenda r;
+  if (!calendarioResumo(petSyncDesde, r)) {
+    petProximoSync = millis() + AGENDA_RETENTAR_MS;
+    return;
+  }
+  petProximoSync = millis() + AGENDA_SYNC_A_CADA_MS;
+
+  if (r.criados > 0) petHunger = clampStat(petHunger + r.criados * AGENDA_COMIDA_POR_EVENTO);
+
+  int total = r.sim + r.nao;
+  petHappy = total > 0 ? clampStat(100.0f * r.sim / total) : AGENDA_HUMOR_SEM_EVENTOS;
+
+  petAgenda = r;
+  petAgendaHora = agoraEpoch();
+  if (r.agora > 0) petSyncDesde = r.agora;   // próxima vez, só o que vier depois disto
+  petSave();
+
+  Serial.printf("Agenda: %d novos, semana %d sim / %d nao, %d pendentes\n",
+                r.criados, r.sim, r.nao, r.nPendentes);
 }
 
 // ─── Humor → desenho e cores ─────────────────────────────────────────────────
@@ -212,9 +251,10 @@ static void petDrawStats() {
   uint32_t horas = vidaSeg / 3600;
   char linha[24];
   snprintf(linha, sizeof(linha), "Idade: %lud %luh", (unsigned long)(horas / 24), (unsigned long)(horas % 24));
-  textoCentro(184, linha, 2, tinta);
+  textoCentro(176, linha, 2, tinta);
 
   // Rede e hora
+  const uint16_t VERDE = COR(40, 130, 60), VERMELHO = COR(180, 60, 40);
   if (agora) {
     struct tm t;
     localtime_r(&agora, &t);
@@ -222,7 +262,14 @@ static void petDrawStats() {
   } else {
     snprintf(linha, sizeof(linha), redeConfigurada() ? "Sem Wi-Fi" : "Wi-Fi nao config.");
   }
-  textoCentro(212, linha, 2, agora ? COR(40, 130, 60) : COR(180, 60, 40));
+  textoCentro(198, linha, 2, agora ? VERDE : VERMELHO);
+
+  // Agenda
+  bool agendaOk = petAgendaHora && agora && agora - petAgendaHora < 30 * 60;
+  if (!calendarioConfigurado())  snprintf(linha, sizeof(linha), "Agenda nao config.");
+  else if (agendaOk)             snprintf(linha, sizeof(linha), "Agenda ok  %d pend.", petAgenda.nPendentes);
+  else                           snprintf(linha, sizeof(linha), "Agenda sem sinal");
+  textoCentro(220, linha, 2, agendaOk ? VERDE : VERMELHO);
 }
 
 static void petStartAction(const uint8_t *sprite, uint16_t fundo, const char *texto) {
@@ -290,6 +337,7 @@ void petBegin() {
 
 void petLoop() {
   petTick();
+  petSincronizarAgenda();
 
   if (petView == PV_ACTION) {
     if ((int32_t)(millis() - petActionUntil) >= 0) {
