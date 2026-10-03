@@ -71,3 +71,12 @@ Lembregotchi existir, contavam como "não concluídos", e o gato já começaria 
 
 Correção: o aparelho envia `inicio`, a hora da **primeira sincronização** (guardada na flash), e a ponte
 **ignora eventos que terminaram antes disso**: eles não pedem check e não contam como esquecidos.
+
+## Ajuste (2026-10-02): versão nas respostas
+
+Depois de publicar a correção de `inicio`, a ponte continuava respondendo como a versão antiga
+(`semana.nao` alto). Sem um identificador, não dava para saber qual código estava implantado.
+
+Correção: `const VERSAO` no `Codigo.gs`, devolvida como `"versao"` em **toda** resposta (inclusive
+GET e erros, porque não é dado sensível). O `apps-script/testar.sh` compara com o arquivo local.
+O firmware não usa esse campo.

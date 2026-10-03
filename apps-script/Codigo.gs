@@ -9,6 +9,10 @@
  *   { "chave": "...", "acao": "check", "id": "...", "fim": <epoch>, "feito": true|false }
  */
 
+// Versão deste código. Volta em toda resposta ("versao") para conferir o que está implantado:
+// mude a cada alteração (data.número) e confira com apps-script/testar.sh.
+const VERSAO = '2026-10-02.1';
+
 const MARCA_SIM = '✅';
 const MARCA_NAO = '❌';
 
@@ -42,7 +46,8 @@ function doPost(e) {
   }
 }
 
-// GET não expõe nada: os dados só saem por POST com a chave.
+// GET não expõe dados (só saem por POST com a chave); devolve apenas a versão,
+// para conferir pelo navegador qual código está implantado.
 function doGet() {
   return resposta_({ ok: false, erro: 'use POST' });
 }
@@ -60,6 +65,7 @@ function chaveValida_(recebida) {
 }
 
 function resposta_(obj) {
+  obj.versao = VERSAO;
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 

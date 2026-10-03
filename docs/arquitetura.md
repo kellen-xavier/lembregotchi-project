@@ -16,7 +16,7 @@ Placa usada no projeto **Lembregotchi**.
 
 ## Visão geral
 
-```
+```txt
                          ┌──────────────────────────────────────────┐
    USB-C ───────────────►│                ESP32-S3R8                │
  (energia + gravação     │  2 núcleos 240 MHz · Wi-Fi · BLE 5       │
@@ -38,7 +38,7 @@ Placa usada no projeto **Lembregotchi**.
 ## Componentes
 
 | Bloco | Chip | Função |
-|---|---|---|
+| --- | --- | --- |
 | Processador | **ESP32-S3R8** (rev v0.2) | 2 núcleos Xtensa LX7 a 240 MHz, Wi-Fi 2,4 GHz, Bluetooth LE 5 |
 | Memória | 8 MB PSRAM + **16 MB flash** | PSRAM para imagens/buffers; flash para o programa e arquivos |
 | Tela | **ST7789** | IPS 1,54", 240×240, 262K cores, SPI 4 fios |
@@ -185,3 +185,5 @@ esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_
 | U8g2 | 2.35.30 | fontes extras para a tela |
 | SensorLib | 0.3.1 | sensor QMI8658 e toque CST816 |
 | ESP32-audioI2S | 3.4.0 | tocar MP3/WAV pelo alto-falante |
+
+## Referencias

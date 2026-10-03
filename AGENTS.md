@@ -102,8 +102,11 @@ $CLI --config-file $CFG upload  -p /dev/ttyACM0 --fqbn $FQBN firmware/lembregotc
 - O Apps Script responde **302** para `script.googleusercontent.com`; o firmware segue à mão com GET
   e **só** para esse domínio.
 - Respostas vêm **chunked**: ler com `http.getString()`, **não** `getStream()`.
+- Toda resposta traz `"versao"` (constante `VERSAO` no topo do `Codigo.gs`). **A cada mudança no
+  `Codigo.gs`, incremente `VERSAO`** (formato `AAAA-MM-DD.N`).
 - Após mudar `Codigo.gs`, a dona precisa **colar no editor e reimplantar** (Gerenciar implantações →
-  ✏️ → *Nova versão*). Confira com `apps-script/testar.sh` (e `testar.sh sem-chave` → `nao autorizado`).
+  ✏️ → *Nova versão*). Confira com `apps-script/testar.sh`: ele compara a versão no ar com a local
+  (`✅ versão implantada = local`). `testar.sh sem-chave` → `nao autorizado`.
 - Validar sintaxe localmente: copiar para `.js` e `node --check`.
 
 ## Convenções
@@ -154,7 +157,8 @@ Diagnóstico de Wi-Fi: `WiFi.onEvent` com `ARDUINO_EVENT_WIFI_STA_DISCONNECTED` 
 ## Estado atual (2026-10-02)
 
 - Passos 1–7 implementados (tela, botões, gato, Wi-Fi/NTP, ponte, sincronização, "Concluiu?").
-- Pendente: confirmar que a versão do `Codigo.gs` com `inicio` está implantada (o teste ainda
-  devolvia `semana.nao` alto).
+- Check no aparelho testado na prática (6 eventos receberam ✅).
+- Pendente: reimplantar `Codigo.gs` versão `2026-10-02.1` (com `inicio` e `versao`) e confirmar
+  com `apps-script/testar.sh`.
 - Ideias futuras: configurar Wi-Fi pelo celular via `WiFi.softAP` (sem senha no código),
   `WiFiMulti` para várias redes, sons pelo ES8311.

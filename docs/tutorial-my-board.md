@@ -394,3 +394,38 @@ que chega da internet em **UTF-8**:
 No UTF-8, letras acentuadas ocupam **2 bytes** (`ã` = `C3 A3`) e emojis ocupam **4**. A função
 troca os acentuados pela letra simples e pula o resto, avançando byte a byte para nunca passar do
 fim do texto, mesmo se o título vier cortado no meio de um emoji.
+
+---
+
+### Passo 5 (complemento) — Conferir qual versão da ponte está no ar
+
+Salvar o `Codigo.gs` no editor **não** atualiza o que a URL `/exec` responde: o app da web roda
+uma **versão congelada** do código, escolhida na implantação. Para não precisar adivinhar, toda
+resposta da ponte traz o campo `"versao"`:
+
+```js
+const VERSAO = '2026-10-02.1';   // no topo do Codigo.gs — mude a cada alteração
+```
+
+**Conferir pelo terminal:**
+```bash
+apps-script/testar.sh
+# ✅ versão implantada = local (2026-10-02.1)
+# ou
+# ❌ ainda está a versão antiga (sem campo versao) — local é 2026-10-02.1
+```
+
+**Conferir pelo navegador:** abra a URL `/exec`. O GET não devolve dados da agenda, só
+`{"ok":false,"erro":"use POST","versao":"…"}`.
+
+**Reimplantar sem mudar a URL:**
+1. Cole o `Codigo.gs` inteiro no editor e salve (Ctrl+S). Arquivo com alteração não salva mostra um ponto no nome.
+2. **Implantar → Gerenciar implantações** → selecione a implantação **ativa** → **✏️** →
+   **Versão: Nova versão** → **Implantar**.
+
+| Armadilha | O que acontece |
+|---|---|
+| Salvou, mas não reimplantou | a URL continua com o código antigo |
+| Usou **Nova implantação** | cria **outra URL**; o `segredos.h` aponta para a antiga |
+| Usou **Testar implantações** (`/dev`) | essa URL só funciona logada; não é a do aparelho |
+| Esqueceu de mudar `VERSAO` | o teste não consegue distinguir as versões |

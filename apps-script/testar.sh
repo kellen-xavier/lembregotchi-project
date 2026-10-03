@@ -18,6 +18,19 @@ CHAVE=$(valor LEMBREGOTCHI_CHAVE)
 DESDE=$(( $(date +%s) - 86400 ))
 
 # inicio = 1 dia atrás: simula um Lembregotchi que começou ontem
-printf '{"chave":"%s","acao":"resumo","desde":%d,"inicio":%d}' "$CHAVE" "$DESDE" "$DESDE" \
-  | curl -sS -L --max-time 30 -H 'Content-Type: application/json' --data-binary @- "$URL"
+RESPOSTA=$(printf '{"chave":"%s","acao":"resumo","desde":%d,"inicio":%d}' "$CHAVE" "$DESDE" "$DESDE" \
+  | curl -sS -L --max-time 30 -H 'Content-Type: application/json' --data-binary @- "$URL")
+unset CHAVE
+echo "$RESPOSTA"
+
+# Confere se o código implantado é o mesmo do arquivo local
+LOCAL=$(sed -nE "s/^const VERSAO = '([^']*)'.*/\1/p" apps-script/Codigo.gs)
+NO_AR=$(printf '%s' "$RESPOSTA" | sed -nE 's/.*"versao":"([^"]*)".*/\1/p')
 echo
+if [[ -n "$NO_AR" && "$NO_AR" == "$LOCAL" ]]; then
+  echo "✅ versão implantada = local ($LOCAL)"
+else
+  echo "❌ ainda está a versão ${NO_AR:-antiga (sem campo versao)} — local é $LOCAL"
+  echo "   Reimplante: Implantar → Gerenciar implantações → ✏️ → Versão: Nova versão → Implantar"
+  exit 2
+fi
