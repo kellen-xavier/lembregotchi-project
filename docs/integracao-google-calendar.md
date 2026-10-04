@@ -90,3 +90,9 @@ em qualquer app do Google Calendar, sem configurar cores nem criar agendas.
   (mesmas regras do humor: ✅ = sim; ❌ ou esquecido > 24 h = não; só depois de `inicio`).
 - O aparelho mostra a tag no "Concluiu?" e tem uma tela **Tags** com concluídos/total por tag.
 - Versão da ponte: `2026-10-03.1`.
+
+## Ajuste (2026-10-04): tags removidas
+
+As tags por hashtag foram **retiradas** do sistema por enquanto, a pedido da dona: a ponte não devolve
+mais `tag`/`tags` (versão `2026-10-04.1`), e o aparelho não tem mais a tela Tags. O código está no
+commit `e778b15`.

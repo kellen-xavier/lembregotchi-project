@@ -98,19 +98,9 @@ bool calendarioResumo(time_t desde, time_t inicio, ResumoAgenda &r) {
     EventoPendente &e = r.pendentes[r.nPendentes++];
     strlcpy(e.id,     p["id"]     | "", sizeof(e.id));
     strlcpy(e.titulo, p["titulo"] | "", sizeof(e.titulo));
-    strlcpy(e.tag,    p["tag"]    | "", sizeof(e.tag));
     e.fim = (time_t)(p["fim"] | 0LL);
   }
 
-  // Ponte antiga (sem "tags") → lista vazia
-  r.nTags = 0;
-  for (JsonObject t : resposta["tags"].as<JsonArray>()) {
-    if (r.nTags >= AGENDA_MAX_TAGS) break;
-    TagSemana &tag = r.tags[r.nTags++];
-    strlcpy(tag.nome, t["tag"] | "", sizeof(tag.nome));
-    tag.sim = t["sim"] | 0;
-    tag.nao = t["nao"] | 0;
-  }
   return true;
 }
 

@@ -429,6 +429,15 @@ apps-script/testar.sh
 | Usou **Nova implantação** | cria **outra URL**; o `segredos.h` aponta para a antiga |
 | Usou **Testar implantações** (`/dev`) | essa URL só funciona logada; não é a do aparelho |
 | Esqueceu de mudar `VERSAO` | o teste não consegue distinguir as versões |
+| Mais de um projeto/implantação | a URL do `segredos.h` aponta para outro; compare o **ID da implantação** |
+| Colou o **ID da implantação** na `LEMBREGOTCHI_CHAVE` | `nao autorizado`; a chave é a de 64 caracteres `0-9a-f` gerada pelo `openssl` |
+| Implantação parada em "Versão 1" | clique no **lápis ✏️** antes; sem ele o campo Versão fica cinza |
+
+O `testar.sh` só aprova com **as duas** linhas:
+```
+✅ versão implantada = local (2026-10-03.1)
+✅ chave aceita
+```
 
 ---
 
@@ -597,6 +606,10 @@ make ide                        # deixa a biblioteca visível na Arduino IDE
 ---
 
 ## Passo 8 — Tags: categorias de eventos com #hashtag
+
+> ⚠️ **Removido em 2026-10-04.** As Tags foram retiradas do sistema por enquanto (firmware,
+> biblioteca, ponte e testes). Esta seção fica como registro; o código completo está no commit
+> `e778b15` (`git show e778b15`) para quando a função voltar.
 
 ### Como usar
 

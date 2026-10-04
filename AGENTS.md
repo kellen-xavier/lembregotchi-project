@@ -52,7 +52,6 @@ firmware/
     src/placa/placa.h/.cpp     pinos (LCD_*, BTN_*, BAT_POWER_HOLD, TELA_*), placaIniciar/NovaTela/Luz
     src/logica/                LÓGICA PURA (sem Arduino) — roda no PC e é testada
       texto.h / texto.cpp      asciiSimples()
-      tags.h / tags.cpp        removerTags() — tira #hashtags do título
       humor.h / humor.cpp      humorDaSemana(sim, nao, bonus), limitarStat()
       pomodoro.h / pomodoro.cpp  timer do Pomodoro (fases, pausa, recompensa, MM:SS)
   lembregotchi/                firmware principal (sketch Arduino)
@@ -125,8 +124,7 @@ $CLI --config-file $CFG upload  -p /dev/ttyACM0 --fqbn $FQBN firmware/lembregotc
 ## Apps Script (ponte)
 
 - Contrato (POST JSON, sempre com `chave`):
-  - `{"acao":"resumo","desde":<epoch>,"inicio":<epoch>}` → `{ok, agora, criados, pendentes[{id,titulo,tag,fim}], semana{sim,nao}, tags[{tag,sim,nao}]}`
-  - **tag** = primeira `#hashtag` do título, minúscula, sem `#` (`extrairTag_`); `tags` = 5 mais usadas na semana.
+  - `{"acao":"resumo","desde":<epoch>,"inicio":<epoch>}` → `{ok, agora, criados, pendentes[{id,titulo,fim}], semana{sim,nao}}`
   - `{"acao":"check","id":"…","fim":<epoch>,"feito":true|false}` → grava ✅/❌ no início do título
 - `inicio` = primeira sincronização do aparelho; eventos que terminaram antes são ignorados.
 - O Apps Script responde **302** para `script.googleusercontent.com`; o firmware segue à mão com GET
@@ -203,16 +201,24 @@ Diagnóstico de Wi-Fi: `WiFi.onEvent` com `ARDUINO_EVENT_WIFI_STA_DISCONNECTED` 
 - Google Apps Script — CalendarApp: https://developers.google.com/apps-script/reference/calendar
 - nekogotchi (origem do gato, MIT): https://github.com/defcon1702/pala-nekogotchi
 
-## Estado atual (2026-10-03)
+## Estado atual (2026-10-04)
 
-- Passos 1–9 implementados: tela, botões, gato, Wi-Fi/NTP, ponte, sincronização, "Concluiu?",
-  **Tags** (#hashtag) e **Pomodoro** (Foco Baixo 25+5, Guerreiro 50+10, tempo livre 5–60).
-- Ações do gato: Comer, Brincar, Carinho, Agenda, Foco, Tags, Status.
+- Implementados: tela, botões, gato, Wi-Fi/NTP, ponte, sincronização, "Concluiu?" e
+  **Pomodoro** (Foco Baixo 25+5, Guerreiro 50+10, tempo livre 5–60).
+- **Tags (#hashtag) foram REMOVIDAS** a pedido da dona (2026-10-04), em todas as camadas
+  (firmware, biblioteca, ponte, testes). O código completo está no commit `e778b15`
+  (`git show e778b15`) para quando forem retomadas. Não reintroduzir sem pedido.
+- Ações do gato: Comer, Brincar, Carinho, Agenda, Foco, Status.
 - Recompensa do Pomodoro: +1 humor/energia por minuto (máx. 50); humor vai para `petBonusHumor`
   (somado à taxa da semana, cai −2/h) para não ser apagado pela sincronização.
-- Pendente: reimplantar `Codigo.gs` versão `2026-10-03.1` (inicio + versao + tags) e confirmar
-  com `apps-script/testar.sh` — a implantação no ar ainda é a antiga.
-- Testes: C++ cobre texto, tags, humor, pomodoro; ponte cobre tags, inicio, pendentes, criados,
+- Ponte local `2026-10-04.1` (sem tags). No ar ainda está a `2026-10-03.1` (com tags) — funciona
+  com o firmware (campos extras são ignorados); reimplantar para o `testar.sh` aprovar.
+- Ponte `2026-10-03.1` foi implantada e confirmada (`testar.sh`: versão = local + chave aceita);
+  placa sincronizando. Havia 2 implantações; usar só a do `segredos.h` (arquivar as antigas).
+- `testar.sh` só aprova com `ok:true` + versão igual; `sem-chave` exige `nao autorizado`.
+- `LEMBREGOTCHI_CHAVE` = 64 hex do `openssl rand -hex 32` (≠ ID da implantação, que tem 72 e começa com `AKfy`).
+- A testar na placa: telas do Pomodoro (pedir foto).
+- Testes: C++ cobre texto, humor, pomodoro; ponte cobre inicio, pendentes, criados,
   chave, versão, check. Ainda sem teste (lógica dentro do `pet.cpp`): passagem do tempo, tempo
   desligado, humor → desenho, efeitos das ações, quebra do título em linhas.
 - Ideias futuras: configurar Wi-Fi pelo celular via `WiFi.softAP` (sem senha no código),

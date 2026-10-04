@@ -34,3 +34,18 @@ else
   echo "   Reimplante: Implantar → Gerenciar implantações → ✏️ → Versão: Nova versão → Implantar"
   exit 2
 fi
+
+# Confere a chave: com a chave certa a resposta é ok:true; no modo sem-chave, deve ser recusada
+if [[ "${1:-}" == "sem-chave" ]]; then
+  if [[ "$RESPOSTA" == *'"erro":"nao autorizado"'* ]]; then
+    echo "✅ chave errada foi recusada"
+  else
+    echo "❌ a ponte ACEITOU uma chave errada"; exit 3
+  fi
+elif [[ "$RESPOSTA" == *'"ok":true'* ]]; then
+  echo "✅ chave aceita"
+else
+  echo "❌ chave recusada: LEMBREGOTCHI_CHAVE em Propriedades do script ≠ segredos.h"
+  echo "   Rode testarChaveConfigurada no editor do Apps Script e confira se dá 64 caracteres."
+  exit 3
+fi

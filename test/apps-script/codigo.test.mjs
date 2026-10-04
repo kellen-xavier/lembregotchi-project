@@ -51,31 +51,6 @@ function carregar(eventos = [], propriedades = { LEMBREGOTCHI_CHAVE: CHAVE }) {
 const s = (ms) => Math.floor(ms / 1000);
 const post = (ctx, pedido) => ctx.doPost({ postData: { contents: JSON.stringify(pedido) } }).corpo;
 
-// ─── Tags ────────────────────────────────────────────────────────────────────
-
-test('extrairTag_: primeira hashtag, em minúsculas, sem o #', () => {
-  const { extrairTag_ } = carregar();
-  assert.equal(extrairTag_('Estudar React #Estudo'), 'estudo');
-  assert.equal(extrairTag_('#trabalho Reunião'), 'trabalho');
-  assert.equal(extrairTag_('Treino #saude #manha'), 'saude');
-  assert.equal(extrairTag_('Médico #Saúde'), 'saúde');
-  assert.equal(extrairTag_('✅ Revisão #estudo'), 'estudo');
-});
-
-test('extrairTag_: sem tag devolve vazio ("C#" e "#" sozinho não são tags)', () => {
-  const { extrairTag_ } = carregar();
-  assert.equal(extrairTag_('Reunião de projeto'), '');
-  assert.equal(extrairTag_('Curso de C# básico'), '');
-  assert.equal(extrairTag_('Sala # 3'), '');
-  assert.equal(extrairTag_(''), '');
-  assert.equal(extrairTag_(undefined), '');
-});
-
-test('extrairTag_: corta nomes muito longos', () => {
-  const { extrairTag_ } = carregar();
-  assert.equal(extrairTag_('#' + 'a'.repeat(50)).length, 20);
-});
-
 // ─── Resumo ──────────────────────────────────────────────────────────────────
 
 test('resumo_: ignora eventos de antes do inicio', () => {
@@ -86,10 +61,9 @@ test('resumo_: ignora eventos de antes do inicio', () => {
   const r = ctx.resumo_(0, s(AGORA - D), AGORA);
   assert.deepEqual({ ...r.semana }, { sim: 0, nao: 0 });
   assert.equal(r.pendentes.length, 0);
-  assert.equal(r.tags.length, 0);
 });
 
-test('resumo_: conta ✅, ❌ e esquecidos (> 24 h) por tag', () => {
+test('resumo_: conta ✅, ❌ e esquecidos (> 24 h)', () => {
   const ctx = carregar([
     evento({ titulo: '✅ Ler #estudo', fim: AGORA - 2 * H }),
     evento({ titulo: '✅ Aula #estudo', fim: AGORA - 3 * D }),
@@ -99,13 +73,9 @@ test('resumo_: conta ✅, ❌ e esquecidos (> 24 h) por tag', () => {
   ]);
   const r = ctx.resumo_(0, s(AGORA - 6 * D), AGORA);
   assert.deepEqual({ ...r.semana }, { sim: 3, nao: 2 });
-  assert.deepEqual(JSON.parse(JSON.stringify(r.tags)), [
-    { tag: 'estudo', sim: 2, nao: 0 },
-    { tag: 'saude', sim: 0, nao: 2 },
-  ]);
 });
 
-test('resumo_: pendentes são os sem resposta das últimas 24 h, com a tag', () => {
+test('resumo_: pendentes são os sem resposta das últimas 24 h', () => {
   const ctx = carregar([
     evento({ titulo: 'Reunião #trabalho', fim: AGORA - 2 * H, id: 'a' }),
     evento({ titulo: 'Ainda acontecendo', fim: AGORA + H }),          // não terminou
@@ -114,17 +84,8 @@ test('resumo_: pendentes são os sem resposta das últimas 24 h, com a tag', () 
   const r = ctx.resumo_(0, s(AGORA - 6 * D), AGORA);
   assert.equal(r.pendentes.length, 1);
   assert.deepEqual({ ...r.pendentes[0] },
-    { id: 'a', titulo: 'Reunião #trabalho', tag: 'trabalho', fim: s(AGORA - 2 * H) });
+    { id: 'a', titulo: 'Reunião #trabalho', fim: s(AGORA - 2 * H) });
   assert.deepEqual({ ...r.semana }, { sim: 0, nao: 0 });
-});
-
-test('resumo_: no máximo 5 tags, as mais usadas primeiro', () => {
-  const eventos = [];
-  ['a', 'b', 'c', 'd', 'e', 'f'].forEach((tag, i) => {
-    for (let n = 0; n <= i; n++) eventos.push(evento({ titulo: `✅ x${n} #${tag}`, fim: AGORA - (n + 1) * H }));
-  });
-  const r = carregar(eventos).resumo_(0, s(AGORA - 6 * D), AGORA);
-  assert.deepEqual(Array.from(r.tags, (t) => t.tag), ['f', 'e', 'd', 'c', 'b']);
 });
 
 test('resumo_: criados conta só eventos criados depois de "desde"', () => {
