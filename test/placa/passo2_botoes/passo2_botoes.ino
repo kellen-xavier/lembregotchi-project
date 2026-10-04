@@ -1,26 +1,9 @@
-// Passo 2 — ler os botões da Waveshare ESP32-S3 1.54" LCD
-// Pinos conferidos no exemplo oficial da Waveshare (02_button_example e 01_factory).
-#include <Arduino_GFX_Library.h>
+// Teste de placa — Passo 2: ler os botões da Waveshare ESP32-S3 1.54" LCD
+// Usa a mesma biblioteca do firmware: pinos (BTN_*, LCD_*) e tela vêm de <Lembregotchi.h>.
+#include <Lembregotchi.h>
 #include <OneButton.h>
 
-// Tela (passo 1)
-#define LCD_DC   45
-#define LCD_CS   21
-#define LCD_SCK  38
-#define LCD_MOSI 39
-#define LCD_RST  40
-#define LCD_BL   46
-
-// Botões: ficam em HIGH soltos e vão para LOW quando apertados ("ativo em LOW")
-#define BTN_BOOT 0
-#define BTN_PLUS 4
-#define BTN_PWR  5
-
-// Mantém a placa ligada quando está na bateria (HIGH = ligada, LOW = desliga)
-#define BAT_POWER_HOLD 2
-
-Arduino_DataBus *bus = new Arduino_ESP32SPI(LCD_DC, LCD_CS, LCD_SCK, LCD_MOSI, GFX_NOT_DEFINED);
-Arduino_GFX *gfx = new Arduino_ST7789(bus, LCD_RST, 0, true, 240, 240);
+Arduino_GFX *gfx = placaNovaTela();
 
 // true = botão ativo em LOW, true = liga o resistor interno de pull-up
 OneButton botaoBoot(BTN_BOOT, true, true);
@@ -53,14 +36,12 @@ void mostrarEvento(const char *botao, const char *evento, uint16_t cor) {
 }
 
 void setup() {
-  pinMode(BAT_POWER_HOLD, OUTPUT);
-  digitalWrite(BAT_POWER_HOLD, HIGH);
+  placaIniciar();
 
   Serial.begin(115200);
 
   gfx->begin();
-  pinMode(LCD_BL, OUTPUT);
-  digitalWrite(LCD_BL, HIGH);
+  placaLuz(true);
 
   gfx->fillScreen(RGB565_BLACK);
   gfx->setTextSize(2);

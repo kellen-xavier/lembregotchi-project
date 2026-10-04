@@ -1,21 +1,7 @@
 #pragma once
 
-// ─── Pinos da placa (Waveshare ESP32-S3 1.54" LCD) — ver docs/arquitetura.md ──
-#define LCD_DC   45
-#define LCD_CS   21
-#define LCD_SCK  38
-#define LCD_MOSI 39
-#define LCD_RST  40
-#define LCD_BL   46
-
-#define BTN_BOOT 0
-#define BTN_PLUS 4
-#define BTN_PWR  5
-
-#define BAT_POWER_HOLD 2   // HIGH = mantém a placa ligada na bateria
-
-#define TELA_W 240
-#define TELA_H 240
+// Pinos e tamanho da tela: biblioteca do projeto (firmware/libraries/Lembregotchi/src/placa/placa.h)
+#include <Lembregotchi.h>
 
 // ─── Bichinho (valores do nekogotchi) ────────────────────────────────────────
 #define PET_START_HUNGER       85

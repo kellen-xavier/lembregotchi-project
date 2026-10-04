@@ -54,7 +54,10 @@ static bool postar(JsonDocument &pedido, JsonDocument &resposta) {
   }
 
   if (codigo != 200) {
-    Serial.printf("Agenda: HTTP %d\n", codigo);
+    // Códigos negativos são falhas antes do HTTP (conexão/TLS): mostra o motivo do TLS
+    char motivo[96] = "";
+    if (codigo < 0) cliente.lastError(motivo, sizeof(motivo));
+    Serial.printf("Agenda: HTTP %d %s (heap livre %u)\n", codigo, motivo, ESP.getFreeHeap());
     http.end();
     return false;
   }

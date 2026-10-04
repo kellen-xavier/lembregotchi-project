@@ -43,11 +43,15 @@ docs/
   integracao-google-calendar.md  regras e desenho da integração (decisões)
   tutorial-my-board.md         tutorial didático, passo a passo (1 → 7)
 firmware/
-  passo1_tela/                 teste da tela (histórico didático)
-  passo2_botoes/               teste dos botões (histórico didático)
+  libraries/Lembregotchi/      BIBLIOTECA DO PROJETO — usada pelo firmware, testes de placa e unitários
+    library.properties
+    src/Lembregotchi.h         inclua só este: #include <Lembregotchi.h>
+    src/placa/placa.h/.cpp     pinos (LCD_*, BTN_*, BAT_POWER_HOLD, TELA_*), placaIniciar/NovaTela/Luz
+    src/logica/                LÓGICA PURA (sem Arduino) — roda no PC e é testada
+      texto.h / texto.cpp      asciiSimples()
   lembregotchi/                firmware principal (sketch Arduino)
     lembregotchi.ino           setup/loop, tela (Canvas), botões
-    config.h                   pinos + constantes do bichinho, rede e agenda
+    config.h                   constantes do bichinho, rede e agenda (pinos vêm da biblioteca)
     pet.h / pet.cpp            estado, tempo, humor, desenho, ações, tela "Concluiu?"
     rede.h / rede.cpp          Wi-Fi + hora (NTP, fuso de Brasília)
     calendario.h / .cpp        cliente HTTPS da ponte (ArduinoJson)
@@ -55,7 +59,19 @@ firmware/
     segredos.exemplo.h         modelo vazio (versionado)
     segredos.h                 valores reais (IGNORADO pelo git)
     src/cat_sprites/           8 sprites 150×150 1-bit + LICENSE (MIT, nekogotchi)
+test/
+  unit/                        testes unitários da lógica pura (doctest); um test_<modulo>.cpp por módulo
+    main.cpp                   gera o main() do doctest
+  placa/                       testes mínimos NA PLACA (sketches), usando a mesma biblioteca
+    passo1_tela/               tela: cores + desenho
+    passo2_botoes/             botões: clique, duplo, longo
+  vendor/doctest.h             framework de testes (MIT, v2.4.12) + LICENSE-doctest.txt
+Makefile                       make test | compilar | gravar | gravar-teste T=… | ide
+compile_flags.txt              caminhos de include para o clangd (editor)
 ```
+
+> A biblioteca é achada pelo `arduino-cli` com `--libraries firmware/libraries` (o `Makefile` já
+> passa). Para a Arduino IDE: `make ide` cria o link `~/Arduino/libraries/Lembregotchi`.
 
 > Na Arduino IDE, só a pasta `src/` de um sketch é compilada junto; por isso os sprites ficam lá.
 
@@ -127,6 +143,25 @@ $CLI --config-file $CFG upload  -p /dev/ttyACM0 --fqbn $FQBN firmware/lembregotc
   testar, tabela de diagnóstico).
 - Não fazer commit/push sem pedido explícito.
 
+## Testes unitários (obrigatórios)
+
+**Toda funcionalidade deve ter teste.** Para isso, a lógica é separada do hardware:
+
+| Camada | Onde | Pode usar | Como testa |
+|---|---|---|---|
+| Lógica pura | `firmware/libraries/Lembregotchi/src/logica/` | só C++ padrão (`<cstring>`, `<cstdint>`…) | `test/unit/` — `make test` no PC |
+| Placa | `src/placa/` da biblioteca | Arduino, pinos | `test/placa/` — `make gravar-teste T=…` + foto/serial |
+| Firmware | `pet.cpp`, `rede.cpp`, `calendario.cpp`, `.ino` | Arduino, tela, Wi-Fi, `millis()` | na placa (serial/foto) |
+
+- **Todo teste usa a mesma biblioteca** (`<Lembregotchi.h>` / `logica/…`): nada de copiar pinos ou
+  funções para dentro de um teste. Testes unitários C++ usam **doctest**.
+- Regra nova ou cálculo novo → vai para `src/logica/` da biblioteca (sem `Arduino.h`, sem `millis()`, sem `gfx`);
+  o código de hardware só chama essas funções. Dados de entrada (hora, valores) entram por parâmetro.
+- Cada módulo `src/logica/X.cpp` tem `test/unit/test_X.cpp`. O `Makefile` pega tudo sozinho.
+- Teste casos normais **e** de borda (vazio, limite, buffer pequeno, valor fora da faixa).
+- `make test` compila com `-Wall -Wextra -Werror` e **ASan/UBSan**: erro de memória reprova o teste.
+- Antes de entregar: `make test` verde **e** `make compilar` (firmware + testes de placa).
+
 ## Testar
 
 | O quê | Como |
@@ -136,7 +171,7 @@ $CLI --config-file $CFG upload  -p /dev/ttyACM0 --fqbn $FQBN firmware/lembregotc
 | Wi-Fi / hora | serial: `Wi-Fi: conectado`, `Hora: sincronizada` |
 | Agenda | serial: `Agenda: N novos, semana S sim / N nao, P pendentes` |
 | Ponte (pelo PC) | `apps-script/testar.sh` |
-| Funções puras (ex.: `asciiSimples`) | extrair para um `.cpp` de teste e compilar com `g++ -fsanitize=address` |
+| Lógica pura (`src/logica/`) | `make test` |
 | Visual | pedir foto da tela à dona — o agente não vê o display |
 
 Diagnóstico de Wi-Fi: `WiFi.onEvent` com `ARDUINO_EVENT_WIFI_STA_DISCONNECTED` dá o motivo
@@ -160,5 +195,9 @@ Diagnóstico de Wi-Fi: `WiFi.onEvent` com `ARDUINO_EVENT_WIFI_STA_DISCONNECTED` 
 - Check no aparelho testado na prática (6 eventos receberam ✅).
 - Pendente: reimplantar `Codigo.gs` versão `2026-10-02.1` (com `inicio` e `versao`) e confirmar
   com `apps-script/testar.sh`.
+- Testes unitários: estrutura criada (`make test`); coberto até agora: `asciiSimples` (texto).
+  A extrair para `src/logica/` e testar: regras do gato (clamp, passagem do tempo, tempo desligado,
+  humor → desenho, humor da semana, efeitos das ações e do check), quebra de título em linhas,
+  e a ponte `Codigo.gs` (com `node:test` e CalendarApp simulado).
 - Ideias futuras: configurar Wi-Fi pelo celular via `WiFi.softAP` (sem senha no código),
   `WiFiMulti` para várias redes, sons pelo ES8311.

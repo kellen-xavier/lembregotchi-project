@@ -429,3 +429,167 @@ apps-script/testar.sh
 | Usou **Nova implantação** | cria **outra URL**; o `segredos.h` aponta para a antiga |
 | Usou **Testar implantações** (`/dev`) | essa URL só funciona logada; não é a do aparelho |
 | Esqueceu de mudar `VERSAO` | o teste não consegue distinguir as versões |
+
+---
+
+## Testes unitários — testar a lógica sem a placa
+
+### Por que
+
+Até aqui, cada mudança era testada **gravando na placa** e olhando a tela. Isso é lento e não
+pega tudo: um erro de memória pode "funcionar" hoje e travar o gato daqui a uma semana.
+
+Um **teste unitário** é um pequeno programa que chama **uma função** com entradas conhecidas e
+confere se a saída é a esperada. Ele roda no **PC**, em segundos, quantas vezes quisermos.
+
+### A regra: separar lógica de hardware
+
+O PC não tem tela ST7789, botões nem Wi-Fi da placa. Então só dá para testar no PC o código que
+**não depende de hardware**:
+
+```
+firmware/lembregotchi/
+├── src/logica/        ← LÓGICA PURA: só C++ padrão → testada no PC (make test)
+│                        (hoje em firmware/libraries/Lembregotchi/src/logica/ — ver abaixo)
+│   └── texto.cpp          asciiSimples()
+├── pet.cpp            ← usa tela, millis(), Preferences → testado na placa
+└── ...
+test/unit/
+├── main.cpp           ← "liga" o framework de testes
+└── test_texto.cpp     ← testes do texto.cpp
+```
+
+O `pet.cpp` continua desenhando e lendo botões, mas **chama** as funções de `src/logica/`. Na
+Arduino IDE, a pasta `src/` é compilada junto com o sketch, então a mesma lógica roda no PC e na placa.
+
+### O framework: doctest
+
+O [doctest](https://github.com/doctest/doctest) é uma biblioteca de testes para C++ num único
+arquivo (`test/vendor/doctest.h`, licença MIT). Um teste fica assim:
+
+```cpp
+TEST_CASE("asciiSimples: acentos do portugues viram letra simples") {
+  CHECK(converter("Reunião de orçamento") == "Reuniao de orcamento");
+}
+```
+
+- `TEST_CASE("nome")`: um grupo de verificações sobre um comportamento;
+- `CHECK(condição)`: se for falsa, o teste **falha** e mostra os valores;
+- `SUBCASE("nome")`: variações dentro do mesmo caso.
+
+### Rodar
+
+```bash
+make test
+```
+```
+[doctest] test cases:  6 |  6 passed | 0 failed | 0 skipped
+[doctest] assertions: 17 | 17 passed | 0 failed |
+[doctest] Status: SUCCESS!
+```
+
+O `Makefile` compila com:
+- `-Wall -Wextra -Werror`: qualquer aviso do compilador vira erro;
+- **AddressSanitizer** (`-fsanitize=address`): para o programa se houver leitura ou escrita fora
+  de um buffer;
+- **UBSan** (`-fsanitize=undefined`): para em comportamento indefinido (ex.: estouro de inteiro).
+
+### O primeiro teste já achou um bug
+
+Ao escrever os casos de borda do `asciiSimples()`, apareceu este: com um buffer de **tamanho 0**,
+a função escrevia o terminador `\0` **fora** do buffer. O teste:
+
+```cpp
+SUBCASE("buffer de 0 bytes: não escreve nada") {
+  char saida[1] = { 'X' };
+  asciiSimples("abc", saida, 0);
+  CHECK(saida[0] == 'X');   // nada pode ter sido escrito
+}
+```
+
+A correção foi uma linha: `if (n == 0) return;`. Para provar que o teste protege mesmo,
+removemos a correção numa cópia e rodamos de novo: o teste **falhou**, como devia. Essa técnica
+se chama **teste de mutação**: estragar o código de propósito para ver se o teste percebe.
+
+### O teste também pode estar errado
+
+Na primeira execução, um caso falhou: esperávamos que `"æ ø ÷"` virasse `"  "` (dois espaços), mas
+a função devolveu `""`. O código estava certo: ela **tira espaços do começo**. O erro era a
+expectativa. Quando um teste falha, investigue os dois lados.
+
+### Como adicionar um teste novo
+
+1. A função vai para `src/logica/<modulo>.cpp` (+ `.h`), **sem** `Arduino.h`, `millis()` ou `gfx`.
+   Valores como "hora atual" entram como **parâmetro**.
+2. Crie `test/unit/test_<modulo>.cpp` com `#include "doctest.h"` e os `TEST_CASE`.
+3. `make test` (o `Makefile` encontra os arquivos novos sozinho).
+4. Compile também para a placa (`arduino-cli compile`), porque a lógica roda nos dois.
+
+| Problema | Causa provável |
+|---|---|
+| `doctest.h: No such file` | rodou o `g++` à mão sem `-Itest/vendor`; use `make test` |
+| `undefined reference to ...` | o `.cpp` da lógica não está em `src/logica/` |
+| `AddressSanitizer: ...` | acesso fora de memória, que é um bug real; leia a linha indicada |
+| Arduino não acha o `.h` | use `#include <Lembregotchi.h>` e compile com `make compilar` |
+
+---
+
+## Organização: uma biblioteca para tudo
+
+### O problema
+
+Os pinos da placa estavam escritos em **três lugares**: no `config.h` do firmware, no teste da tela
+e no teste dos botões. Se um pino mudasse, era preciso lembrar de trocar nos três, e um teste podia
+"passar" usando valores diferentes dos do firmware.
+
+### A solução: uma biblioteca Arduino do próprio projeto
+
+```
+firmware/libraries/Lembregotchi/
+├── library.properties        ← "carteira de identidade" da biblioteca (nome, dependências)
+└── src/
+    ├── Lembregotchi.h        ← o único include que os sketches precisam
+    ├── placa/placa.h/.cpp    ← pinos + placaIniciar(), placaNovaTela(), placaLuz()
+    └── logica/texto.h/.cpp   ← lógica pura (testada no PC)
+```
+
+Quem usa:
+
+| Quem | Como inclui | Onde |
+|---|---|---|
+| Firmware | `#include <Lembregotchi.h>` | `firmware/lembregotchi/` |
+| Testes de placa | `#include <Lembregotchi.h>` | `test/placa/passo1_tela/`, `test/placa/passo2_botoes/` |
+| Testes unitários | `#include "logica/texto.h"` | `test/unit/` (doctest) |
+
+Assim, **o teste mínimo usa exatamente o mesmo código** que o firmware. Exemplo do teste da tela:
+
+```cpp
+#include <Lembregotchi.h>
+
+Arduino_GFX *gfx = placaNovaTela();   // mesma tela, mesmos pinos do firmware
+
+void setup() {
+  gfx->begin();
+  placaLuz(true);
+  ...
+```
+
+### Dois tipos de teste
+
+| Tipo | Pasta | Roda onde | Como confere |
+|---|---|---|---|
+| **Unitário** | `test/unit/` | no PC | sozinho: `make test` diz passou/falhou |
+| **De placa** | `test/placa/` | na placa | você olha a tela / aperta os botões |
+
+### Comandos (`Makefile`)
+
+```bash
+make test                       # testes unitários no PC
+make compilar                   # compila o firmware e todos os testes de placa
+make gravar                     # grava o firmware
+make gravar-teste T=passo1_tela # grava um teste de placa
+make ide                        # deixa a biblioteca visível na Arduino IDE
+```
+
+> A Arduino IDE só procura bibliotecas em `~/Arduino/libraries`. O `make ide` cria lá um **link**
+> para a pasta do projeto: a IDE enxerga a biblioteca, mas o código continua num lugar só.

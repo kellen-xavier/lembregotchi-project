@@ -1,16 +1,8 @@
-// Passo 1 — acender a tela da Waveshare ESP32-S3 1.54" LCD (ST7789 240x240)
-// Pinos conferidos no exemplo oficial da Waveshare (04_gfx_helloworld).
-#include <Arduino_GFX_Library.h
+// Teste de placa — Passo 1: acender a tela da Waveshare ESP32-S3 1.54" LCD (ST7789 240x240)
+// Usa a mesma biblioteca do firmware: pinos e criação da tela vêm de <Lembregotchi.h>.
+#include <Lembregotchi.h>
 
-#define LCD_DC   45
-#define LCD_CS   21
-#define LCD_SCK  38
-#define LCD_MOSI 39
-#define LCD_RST  40
-#define LCD_BL   46  // luz de fundo
-
-Arduino_DataBus *bus = new Arduino_ESP32SPI(LCD_DC, LCD_CS, LCD_SCK, LCD_MOSI, GFX_NOT_DEFINED /* MISO */);
-Arduino_GFX *gfx = new Arduino_ST7789(bus, LCD_RST, 0 /* rotação */, true /* IPS */, 240, 240);
+Arduino_GFX *gfx = placaNovaTela();
 
 void setup() {
   Serial.begin(115200);
@@ -23,8 +15,7 @@ void setup() {
   }
 
   // 2) Acender a luz de fundo
-  pinMode(LCD_BL, OUTPUT);
-  digitalWrite(LCD_BL, HIGH);
+  placaLuz(true);
 
   // 3) Teste de cores: vermelho, verde, azul
   gfx->fillScreen(RGB565_RED);   delay(700);

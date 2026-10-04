@@ -22,3 +22,6 @@ pala-nekogotchi
 # Ferramenta clasp do Apps Script (guarda tokens de login)
 .clasprc.json
 .clasp.json
+
+# Saída dos testes no PC
+build/
