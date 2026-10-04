@@ -33,7 +33,7 @@
 // ─── Google Calendar (ver docs/integracao-google-calendar.md) ────────────────
 #define AGENDA_COMIDA_POR_EVENTO      20    // cada evento novo na agenda alimenta o gato
 #define AGENDA_ENERGIA_POR_CHECK      15    // check "sim" sobe, "não" desce (passo 7)
-#define AGENDA_HUMOR_SEM_EVENTOS      50    // humor neutro se não houve eventos na semana
+// humor neutro sem eventos na semana: HUMOR_SEM_EVENTOS em logica/humor.h (biblioteca)
 #define AGENDA_RECOVER_ENERGY_PH      2     // com agenda, a energia vem dos checks; só descansa devagar
 #define AGENDA_SYNC_A_CADA_MS         (5UL * 60UL * 1000UL)  // busca a agenda a cada 5 min
 #define AGENDA_RETENTAR_MS            (60UL * 1000UL)        // se falhar, tenta de novo em 1 min

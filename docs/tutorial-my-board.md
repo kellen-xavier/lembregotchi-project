@@ -593,3 +593,114 @@ make ide                        # deixa a biblioteca visível na Arduino IDE
 
 > A Arduino IDE só procura bibliotecas em `~/Arduino/libraries`. O `make ide` cria lá um **link**
 > para a pasta do projeto: a IDE enxerga a biblioteca, mas o código continua num lugar só.
+
+---
+
+## Passo 8 — Tags: categorias de eventos com #hashtag
+
+### Como usar
+
+No Google Calendar (celular ou PC), coloque uma **hashtag no título** do evento:
+
+```
+Estudar React #estudo
+Corrida #saude
+Reunião de time #trabalho
+```
+
+- só a **primeira** hashtag conta, em minúsculas (`#Estudo` = `#estudo`);
+- `C#` ou `#` sozinho **não** são tags (precisa de espaço antes e letras depois).
+
+### No aparelho
+
+| Onde | O que aparece |
+|---|---|
+| "Concluiu?" | o título **sem** a hashtag, e embaixo `14:30  #estudo` |
+| Nova ação **Tags** | as 5 tags mais usadas na semana, com `concluídos/total` e uma barra verde/vermelha |
+
+### Quem faz o quê
+
+| Parte | Onde | Testado em |
+|---|---|---|
+| Achar a tag e somar ✅/❌ por tag | ponte `Codigo.gs` (`extrairTag_`, `tagsMaisUsadas_`) | `test/apps-script/` (node:test) |
+| Tirar a hashtag do título para mostrar | biblioteca `logica/tags` (`removerTags`) | `test/unit/test_tags.cpp` |
+
+> A ponte mudou (versão `2026-10-03.1`): **reimplante** o `Codigo.gs` e confira com
+> `apps-script/testar.sh`. Com a ponte antiga, a tela Tags mostra "Nenhuma tag".
+
+---
+
+## Passo 9 — Pomodoro ("Foco")
+
+### O fluxo
+
+```
+[Foco] no menu do gato
+   │ BOOT
+   ▼
+Pomodoro (gato)  ──BOOT──►  Selecionar Tempo ──► 5, 10 … 60 min ─┐
+                            Foco Baixo      (25 min + 5 de pausa) ├─► timer ──► gato feliz +N
+                            Foco Guerreiro  (50 min + 10 de pausa)┘              │
+                                                                     (se houver pausa) ▼
+                                                                    pausa (gato dormindo) ──► "Bora!"
+```
+
+| Tela | PLUS | BOOT | PWR |
+|---|---|---|---|
+| Pomodoro (gato) | menu | menu | volta ao gato |
+| Menu / Selecionar Tempo | próximo item | escolhe / inicia | volta uma tela |
+| Timer | — | pausa / continua | **desiste** (sem recompensa) |
+
+### Recompensa
+
+Ao **completar** o foco: **+1 de humor e +1 de energia por minuto** (máximo +50).
+`Foco Baixo` = +25, `Foco Guerreiro` = +50. Desistir não dá nada.
+
+Com a agenda ligada, o humor é recalculado pela semana a cada 5 minutos, e a recompensa sumiria.
+Por isso ela vai para um **bônus de humor** guardado à parte: soma por cima da taxa da semana e
+cai 2 pontos por hora, como o humor normal.
+
+### O timer sem relógio: `millis()`
+
+O timer guarda **quando a fase começou** (`inicioMs`) e calcula `restante = duração − (agora − início)`.
+A conta usa números **sem sinal** de 32 bits, então continua certa mesmo quando o `millis()`
+"dá a volta" (volta a zero depois de ~49 dias ligado). Isso está testado.
+
+Pausar guarda `parouEmMs`; ao continuar, o início é empurrado para frente pelo tempo parado.
+
+### A imagem do timer (troque pela sua!)
+
+A imagem padrão é o cavaleiro descansando na fogueira (`image/descansa-guerreiro.jpeg`), uma
+brincadeira compartilhada publicamente pela FromSoftware, escolhida pela dona do projeto.
+**Quem usar este repositório pode colocar a imagem que quiser:**
+
+```bash
+make imagem IMG=minha-foto.jpg                     # recorta o centro na proporção certa
+make imagem IMG=minha-foto.jpg CORTE="0 0 400 270" # ou escolha a área: x0 y0 x1 y1 (em pixels)
+make imagem                                        # volta para a imagem padrão
+make gravar
+```
+
+Por baixo, o `make imagem` chama o `tools/imagem_rgb565.py`. A tela só entende pixels **RGB565**
+(2 bytes por pixel), então o script:
+1. recorta a área escolhida (ou o centro, sem esticar);
+2. redimensiona para **220×150**;
+3. gera `src/imagens/foco.h` com os pixels (`img_foco`, **66 KB** na flash).
+
+O `foco.cpp` desenha com `gfx->draw16bitRGBBitmap()`. Como o nome é sempre `img_foco`, trocar a
+imagem **não exige mudar código**.
+
+### Testes
+
+| O quê | Arquivo |
+|---|---|
+| fases, pausa, volta do `millis()`, recompensa, `MM:SS` | `test/unit/test_pomodoro.cpp` |
+| conversor de imagem: cores, recorte central, recorte manual | `test/tools/test_imagem_rgb565.py` |
+| humor da semana + bônus, limites 0–100 | `test/unit/test_humor.cpp` |
+
+| Problema | Causa provável |
+|---|---|
+| Timer não anda | está **pausado** (aparece "PAUSADO") |
+| Não ganhou recompensa | apertou PWR (desistiu) antes do fim |
+| Imagem com cores estranhas | `.h` gerado à mão ou de outro tamanho; gere de novo com `make imagem` |
+| Imagem cortada no lugar errado | use `CORTE="x0 y0 x1 y1"` para escolher a área |

@@ -29,6 +29,9 @@ adaptados de e-paper 1-bit para LCD colorido.
   (ex.: `grep -rnE "script.google.com/macros/s/[A-Za-z0-9_-]{10,}|[0-9a-f]{64}"` nos arquivos novos).
 - HTTPS **sempre** com verificação de certificado (`certificados.h`). Nunca usar `setInsecure()`.
 - Não adicionar material com direitos autorais de terceiros (datasheets etc.). Use links.
+  Exceção decidida pela dona: a imagem padrão do Pomodoro (`image/descansa-guerreiro.jpeg`,
+  brincadeira compartilhada publicamente pela FromSoftware). A imagem é **trocável**
+  (`make imagem IMG=…`); o código nunca depende dela, só do símbolo `img_foco`.
 
 ## Estrutura
 
@@ -49,8 +52,13 @@ firmware/
     src/placa/placa.h/.cpp     pinos (LCD_*, BTN_*, BAT_POWER_HOLD, TELA_*), placaIniciar/NovaTela/Luz
     src/logica/                LÓGICA PURA (sem Arduino) — roda no PC e é testada
       texto.h / texto.cpp      asciiSimples()
+      tags.h / tags.cpp        removerTags() — tira #hashtags do título
+      humor.h / humor.cpp      humorDaSemana(sim, nao, bonus), limitarStat()
+      pomodoro.h / pomodoro.cpp  timer do Pomodoro (fases, pausa, recompensa, MM:SS)
   lembregotchi/                firmware principal (sketch Arduino)
     lembregotchi.ino           setup/loop, tela (Canvas), botões
+    tela.h / tela.cpp          COR(), cores comuns, textoCentro(), mostrar()
+    foco.h / foco.cpp          telas e botões do Pomodoro ("Foco")
     config.h                   constantes do bichinho, rede e agenda (pinos vêm da biblioteca)
     pet.h / pet.cpp            estado, tempo, humor, desenho, ações, tela "Concluiu?"
     rede.h / rede.cpp          Wi-Fi + hora (NTP, fuso de Brasília)
@@ -59,14 +67,19 @@ firmware/
     segredos.exemplo.h         modelo vazio (versionado)
     segredos.h                 valores reais (IGNORADO pelo git)
     src/cat_sprites/           8 sprites 150×150 1-bit + LICENSE (MIT, nekogotchi)
+    src/imagens/foco.h         GERADO por `make imagem` (img_foco, 220×150 RGB565) — não editar
+    image/                     imagens originais (padrão: descansa-guerreiro.jpeg)
 test/
   unit/                        testes unitários da lógica pura (doctest); um test_<modulo>.cpp por módulo
     main.cpp                   gera o main() do doctest
   placa/                       testes mínimos NA PLACA (sketches), usando a mesma biblioteca
     passo1_tela/               tela: cores + desenho
     passo2_botoes/             botões: clique, duplo, longo
+  apps-script/codigo.test.mjs  testes da ponte (node:test) com Google falso (vm + CalendarApp simulado)
   vendor/doctest.h             framework de testes (MIT, v2.4.12) + LICENSE-doctest.txt
-Makefile                       make test | compilar | gravar | gravar-teste T=… | ide
+  tools/test_imagem_rgb565.py  testes do conversor de imagem (Python unittest)
+tools/imagem_rgb565.py         converte JPG/PNG em .h RGB565 (recorte central ou CORTE manual)
+Makefile                       make test | compilar | gravar | gravar-teste T=… | ide | imagem IMG=…
 compile_flags.txt              caminhos de include para o clangd (editor)
 ```
 
@@ -112,7 +125,8 @@ $CLI --config-file $CFG upload  -p /dev/ttyACM0 --fqbn $FQBN firmware/lembregotc
 ## Apps Script (ponte)
 
 - Contrato (POST JSON, sempre com `chave`):
-  - `{"acao":"resumo","desde":<epoch>,"inicio":<epoch>}` → `{ok, agora, criados, pendentes[{id,titulo,fim}], semana{sim,nao}}`
+  - `{"acao":"resumo","desde":<epoch>,"inicio":<epoch>}` → `{ok, agora, criados, pendentes[{id,titulo,tag,fim}], semana{sim,nao}, tags[{tag,sim,nao}]}`
+  - **tag** = primeira `#hashtag` do título, minúscula, sem `#` (`extrairTag_`); `tags` = 5 mais usadas na semana.
   - `{"acao":"check","id":"…","fim":<epoch>,"feito":true|false}` → grava ✅/❌ no início do título
 - `inicio` = primeira sincronização do aparelho; eventos que terminaram antes são ignorados.
 - O Apps Script responde **302** para `script.googleusercontent.com`; o firmware segue à mão com GET
@@ -189,15 +203,17 @@ Diagnóstico de Wi-Fi: `WiFi.onEvent` com `ARDUINO_EVENT_WIFI_STA_DISCONNECTED` 
 - Google Apps Script — CalendarApp: https://developers.google.com/apps-script/reference/calendar
 - nekogotchi (origem do gato, MIT): https://github.com/defcon1702/pala-nekogotchi
 
-## Estado atual (2026-10-02)
+## Estado atual (2026-10-03)
 
-- Passos 1–7 implementados (tela, botões, gato, Wi-Fi/NTP, ponte, sincronização, "Concluiu?").
-- Check no aparelho testado na prática (6 eventos receberam ✅).
-- Pendente: reimplantar `Codigo.gs` versão `2026-10-02.1` (com `inicio` e `versao`) e confirmar
-  com `apps-script/testar.sh`.
-- Testes unitários: estrutura criada (`make test`); coberto até agora: `asciiSimples` (texto).
-  A extrair para `src/logica/` e testar: regras do gato (clamp, passagem do tempo, tempo desligado,
-  humor → desenho, humor da semana, efeitos das ações e do check), quebra de título em linhas,
-  e a ponte `Codigo.gs` (com `node:test` e CalendarApp simulado).
+- Passos 1–9 implementados: tela, botões, gato, Wi-Fi/NTP, ponte, sincronização, "Concluiu?",
+  **Tags** (#hashtag) e **Pomodoro** (Foco Baixo 25+5, Guerreiro 50+10, tempo livre 5–60).
+- Ações do gato: Comer, Brincar, Carinho, Agenda, Foco, Tags, Status.
+- Recompensa do Pomodoro: +1 humor/energia por minuto (máx. 50); humor vai para `petBonusHumor`
+  (somado à taxa da semana, cai −2/h) para não ser apagado pela sincronização.
+- Pendente: reimplantar `Codigo.gs` versão `2026-10-03.1` (inicio + versao + tags) e confirmar
+  com `apps-script/testar.sh` — a implantação no ar ainda é a antiga.
+- Testes: C++ cobre texto, tags, humor, pomodoro; ponte cobre tags, inicio, pendentes, criados,
+  chave, versão, check. Ainda sem teste (lógica dentro do `pet.cpp`): passagem do tempo, tempo
+  desligado, humor → desenho, efeitos das ações, quebra do título em linhas.
 - Ideias futuras: configurar Wi-Fi pelo celular via `WiFi.softAP` (sem senha no código),
   `WiFiMulti` para várias redes, sons pelo ES8311.

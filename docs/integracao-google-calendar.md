@@ -80,3 +80,13 @@ Depois de publicar a correção de `inicio`, a ponte continuava respondendo como
 Correção: `const VERSAO` no `Codigo.gs`, devolvida como `"versao"` em **toda** resposta (inclusive
 GET e erros, porque não é dado sensível). O `apps-script/testar.sh` compara com o arquivo local.
 O firmware não usa esse campo.
+
+## Ajuste (2026-10-03): tags por hashtag
+
+Categoria de evento = **primeira `#hashtag` do título** (ex.: `Ler #estudo`). Escolhida porque funciona
+em qualquer app do Google Calendar, sem configurar cores nem criar agendas.
+
+- A ponte devolve `tag` em cada pendente e `tags: [{tag, sim, nao}]` com as 5 tags mais usadas da semana
+  (mesmas regras do humor: ✅ = sim; ❌ ou esquecido > 24 h = não; só depois de `inicio`).
+- O aparelho mostra a tag no "Concluiu?" e tem uma tela **Tags** com concluídos/total por tag.
+- Versão da ponte: `2026-10-03.1`.

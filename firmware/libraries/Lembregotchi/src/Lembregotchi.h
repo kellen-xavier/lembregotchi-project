@@ -6,3 +6,6 @@
 // logica/  lógica pura, sem Arduino (roda no PC e é testada com `make test`)
 #include "placa/placa.h"
 #include "logica/texto.h"
+#include "logica/tags.h"
+#include "logica/humor.h"
+#include "logica/pomodoro.h"

@@ -10,12 +10,9 @@
 #include "pet.h"
 #include "rede.h"
 #include "calendario.h"
+#include "foco.h"
+#include "tela.h"
 #include "src/cat_sprites/cat_sprites.h"
-
-extern Arduino_GFX *gfx;   // criado em lembregotchi.ino
-
-// Converte r,g,b (0–255) para o formato de cor da tela (RGB565)
-#define COR(r, g, b) (uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
 
 // ─── Estado ──────────────────────────────────────────────────────────────────
 // Guardado como float para a queda lenta (ex.: 3 por hora) acumular a cada segundo.
@@ -26,6 +23,7 @@ static uint32_t petIdadeSeg = 0;                // tempo de vida contado com a p
 static time_t   petNasc  = 0;                   // quando nasceu (hora real), 0 = ainda não sabe
 static time_t   petVisto = 0;                   // última vez que o estado foi salvo (hora real)
 static bool     petHoraAplicada = false;        // já descontou o tempo em que ficou desligado?
+static float    petBonusHumor = 0;              // humor extra (Pomodoro) somado à taxa da semana; cai com o tempo
 
 // Agenda
 static time_t   petSyncDesde = 0;               // hora (do servidor) da última sincronização
@@ -34,33 +32,29 @@ static uint32_t petProximoSync = 0;             // millis() da próxima tentativ
 static time_t   petAgendaHora = 0;              // quando sincronizou com sucesso pela última vez
 static ResumoAgenda petAgenda = {};             // último resumo; pendentes[0] é o próximo "Concluiu?"
 
-enum PetView { PV_MAIN, PV_STATS, PV_ACTION, PV_CHECK };
+enum PetView { PV_MAIN, PV_STATS, PV_ACTION, PV_CHECK, PV_FOCO, PV_TAGS };
 static PetView  petView = PV_MAIN;
-static int      petSel  = 0;           // 0 Comer, 1 Brincar, 2 Carinho, 3 Agenda, 4 Status
+static int      petSel  = 0;           // índice em ACOES
 static uint32_t petActionUntil = 0;
 static bool     petVoltarParaCheck = false;   // depois da pose, volta para o próximo pendente
+static bool     petVoltarParaFoco  = false;   // depois da recompensa, volta para a pausa do Pomodoro
 
 static uint32_t petUltimoTick   = 0;
 static uint32_t petUltimoSalvar = 0;
 static int      petUltimoDesenho = -1; // "assinatura" do que está na tela
 
-#define N_ACOES 5
-static const char *ACOES[N_ACOES] = { "Comer", "Brincar", "Carinho", "Agenda", "Status" };
+#define N_ACOES 7
+enum Acao { A_COMER, A_BRINCAR, A_CARINHO, A_AGENDA, A_FOCO, A_TAGS, A_STATUS };
+static const char *ACOES[N_ACOES] = { "Comer", "Brincar", "Carinho", "Agenda", "Foco", "Tags", "Status" };
+
+#define PET_RECOMPENSA_MS 3000   // quanto tempo a tela de recompensa do Pomodoro fica
 
 static void petAbrirCheck();   // definida mais abaixo
 
 static Preferences prefs;
 
 // ─── Utilidades ──────────────────────────────────────────────────────────────
-static inline float clampStat(float v) { return v < 0 ? 0 : (v > 100 ? 100 : v); }
-
-// Escreve um texto centralizado (a fonte padrão tem 6 px de largura por letra)
-static void textoCentro(int y, const char *txt, int tamanho, uint16_t cor) {
-  gfx->setTextSize(tamanho);
-  gfx->setTextColor(cor);
-  gfx->setCursor((TELA_W - (int)strlen(txt) * 6 * tamanho) / 2, y);
-  gfx->print(txt);
-}
+static inline float clampStat(float v) { return limitarStat(v); }   // logica/humor (testada)
 
 // ─── Salvar e carregar (memória flash, sobrevive a desligar) ─────────────────
 static void petSave() {
@@ -74,6 +68,7 @@ static void petSave() {
   prefs.putLong64("visto", petVisto);
   prefs.putLong64("sync",  petSyncDesde);
   prefs.putLong64("inicio", petAgendaInicio);
+  prefs.putFloat("bonus", petBonusHumor);
   petUltimoSalvar = millis();
 }
 
@@ -86,12 +81,15 @@ static void petLoad() {
   petVisto    = prefs.getLong64("visto", 0);
   petSyncDesde = prefs.getLong64("sync", 0);
   petAgendaInicio = prefs.getLong64("inicio", 0);
+  petBonusHumor = prefs.getFloat("bonus", 0);
 }
 
 // ─── Passagem do tempo ───────────────────────────────────────────────────────
 static void aplicarHoras(float horas) {
   petHunger = clampStat(petHunger - PET_DECAY_HUNGER_PH   * horas);
   petHappy  = clampStat(petHappy  - PET_DECAY_HAPPY_PH    * horas);
+  petBonusHumor -= PET_DECAY_HAPPY_PH * horas;
+  if (petBonusHumor < 0) petBonusHumor = 0;
   float recupera = calendarioConfigurado() ? AGENDA_RECOVER_ENERGY_PH : PET_RECOVER_ENERGY_PH;
   petEnergy = clampStat(petEnergy + recupera * horas);
 }
@@ -132,7 +130,7 @@ static void petTick() {
 
 // ─── Agenda → Comida e Humor ─────────────────────────────────────────────────
 // Comida: +20 por evento criado desde a última sincronização.
-// Humor:  taxa de conclusão (✅ / (✅ + ❌)) dos últimos 7 dias.
+// Humor:  taxa de conclusão (✅ / (✅ + ❌)) dos últimos 7 dias + bônus do Pomodoro.
 // Energia vem dos checks no aparelho (passo 7).
 static void petSincronizarAgenda() {
   if (!calendarioConfigurado() || !redeConectada() || agoraEpoch() == 0) return;
@@ -150,8 +148,7 @@ static void petSincronizarAgenda() {
 
   if (r.criados > 0) petHunger = clampStat(petHunger + r.criados * AGENDA_COMIDA_POR_EVENTO);
 
-  int total = r.sim + r.nao;
-  petHappy = total > 0 ? clampStat(100.0f * r.sim / total) : AGENDA_HUMOR_SEM_EVENTOS;
+  petHappy = humorDaSemana(r.sim, r.nao, petBonusHumor);
 
   bool chegouPendente = r.nPendentes > petAgenda.nPendentes;
   petAgenda = r;
@@ -241,7 +238,7 @@ static void petDrawMain() {
   gfx->fillTriangle(42, 201, 52, 193, 52, 209, fundo);     // ◀
   gfx->fillTriangle(198, 201, 188, 193, 188, 209, fundo);  // ▶
   char rotulo[16];
-  if (petSel == 3 && petAgenda.nPendentes > 0) snprintf(rotulo, sizeof(rotulo), "Agenda(%d)", petAgenda.nPendentes);
+  if (petSel == A_AGENDA && petAgenda.nPendentes > 0) snprintf(rotulo, sizeof(rotulo), "Agenda(%d)", petAgenda.nPendentes);
   else                                         snprintf(rotulo, sizeof(rotulo), "%s", ACOES[petSel]);
   textoCentro(194, rotulo, 2, fundo);
 
@@ -311,11 +308,6 @@ static void petStartAction(const uint8_t *sprite, uint16_t fundo, const char *te
   textoCentro(196, texto, 3, tinta);
 }
 
-// Mostra o resultado: o canvas é desenhado na memória e enviado de uma vez (sem piscar)
-static void mostrar() {
-  gfx->flush();
-}
-
 // Redesenha a tela principal só quando algo visível mudou
 static void petRedesenharSePreciso(bool forcar) {
   // Junta humor, ação e os três valores (0–100) num número só para comparar
@@ -371,8 +363,9 @@ static void petDrawCheck() {
   snprintf(linha, sizeof(linha), "1 de %d", petAgenda.nPendentes);
   textoCentro(38, linha, 1, COR(140, 120, 100));
 
-  char titulo[48];
-  asciiSimples(e.titulo, titulo, sizeof(titulo));
+  char semTag[48], titulo[48];
+  removerTags(e.titulo, semTag, sizeof(semTag));         // a tag aparece embaixo, separada
+  asciiSimples(semTag, titulo, sizeof(titulo));
   if (!titulo[0]) strlcpy(titulo, "(sem titulo)", sizeof(titulo));
   gfx->drawRoundRect(10, 54, TELA_W - 20, 76, 8, tinta);
   desenharTitulo(titulo, 62, tinta);
@@ -381,7 +374,10 @@ static void petDrawCheck() {
   struct tm t;
   time_t fim = e.fim;
   localtime_r(&fim, &t);
-  snprintf(linha, sizeof(linha), "terminou %02d:%02d", t.tm_hour, t.tm_min);
+  char tag[24];
+  asciiSimples(e.tag, tag, sizeof(tag));
+  if (tag[0]) snprintf(linha, sizeof(linha), "%02d:%02d  #%.10s", t.tm_hour, t.tm_min, tag);
+  else        snprintf(linha, sizeof(linha), "terminou %02d:%02d", t.tm_hour, t.tm_min);
   textoCentro(138, linha, 2, COR(140, 120, 100));
 
   // Botões
@@ -422,8 +418,10 @@ static void petResponderCheck(bool feito) {
   // Confirmado no Google: aplica no gato
   petEnergy = clampStat(petEnergy + (feito ? AGENDA_ENERGIA_POR_CHECK : -AGENDA_ENERGIA_POR_CHECK));
   if (feito) petAgenda.sim++; else petAgenda.nao++;
-  int total = petAgenda.sim + petAgenda.nao;
-  petHappy = clampStat(100.0f * petAgenda.sim / total);
+  for (int i = 0; i < petAgenda.nTags; i++) {          // atualiza a tela Tags na hora
+    if (strcmp(petAgenda.tags[i].nome, e.tag) == 0) { if (feito) petAgenda.tags[i].sim++; else petAgenda.tags[i].nao++; }
+  }
+  petHappy = humorDaSemana(petAgenda.sim, petAgenda.nao, petBonusHumor);
 
   // Tira o evento respondido da fila
   for (int i = 1; i < petAgenda.nPendentes; i++) petAgenda.pendentes[i - 1] = petAgenda.pendentes[i];
@@ -437,30 +435,74 @@ static void petResponderCheck(bool feito) {
   mostrar();
 }
 
+// ─── Tags: ✅/❌ da semana por categoria (#hashtag no título) ──────────────────
+static void petDrawTags() {
+  gfx->fillScreen(COR_CREME);
+  textoCentro(8, "Tags", 3, COR_TINTA);
+
+  if (petAgenda.nTags == 0) {
+    textoCentro(80, "Nenhuma tag", 2, COR_TINTA);
+    textoCentro(104, "nesta semana", 2, COR_TINTA);
+    textoCentro(150, "Coloque #tag no titulo", 1, COR_CINZA);
+    textoCentro(164, "do evento. Ex.: Ler #estudo", 1, COR_CINZA);
+  }
+
+  for (int i = 0; i < petAgenda.nTags; i++) {
+    const TagSemana &t = petAgenda.tags[i];
+    int y = 42 + i * 37;
+    char nome[24], linha[24];
+    asciiSimples(t.nome, nome, sizeof(nome));
+    snprintf(linha, sizeof(linha), "#%.10s", nome);
+    gfx->setTextSize(2);
+    gfx->setTextColor(COR_TINTA);
+    gfx->setCursor(12, y);
+    gfx->print(linha);
+
+    int total = t.sim + t.nao;
+    snprintf(linha, sizeof(linha), "%d/%d", t.sim, total);
+    gfx->setCursor(TELA_W - 12 - (int)strlen(linha) * 12, y);
+    gfx->print(linha);
+
+    // barra: verde = concluídos, vermelho = não concluídos
+    int largura = TELA_W - 24, verde = total ? largura * t.sim / total : 0;
+    gfx->fillRect(12, y + 19, largura, 8, COR(190, 70, 60));
+    if (verde > 0) gfx->fillRect(12, y + 19, verde, 8, COR(60, 150, 70));
+  }
+  textoCentro(230, "qualquer botao volta", 1, COR_CINZA);
+}
+
 // ─── Ações ───────────────────────────────────────────────────────────────────
 static void petDoAction(int sel) {
   switch (sel) {
-    case 0:  // Comer
+    case A_COMER:
       petHunger = clampStat(petHunger + PET_FEED_HUNGER);
       petSave();
       petStartAction(cat_eat, COR(255, 200, 140), "Nham!");
       break;
-    case 1:  // Brincar
+    case A_BRINCAR:
       petHappy  = clampStat(petHappy  + PET_PLAY_HAPPY);
       petEnergy = clampStat(petEnergy - PET_PLAY_ENERGY);
       petSave();
       petStartAction(cat_play, COR(255, 235, 120), "Yay!");
       break;
-    case 2:  // Carinho
+    case A_CARINHO:
       petHappy = clampStat(petHappy + PET_PET_HAPPY);
       petSave();
       petStartAction(cat_purr, COR(255, 200, 220), "Purr...");
       break;
-    case 3:  // Agenda
+    case A_AGENDA:
       if (petAgenda.nPendentes > 0) { petAbrirCheck(); return; }
       petStartAction(cat_happy, COR(200, 240, 190), "Em dia!");
       break;
-    case 4:  // Status
+    case A_FOCO:
+      petView = PV_FOCO;
+      focoAbrir();
+      return;
+    case A_TAGS:
+      petView = PV_TAGS;
+      petDrawTags();
+      break;
+    case A_STATUS:
       petView = PV_STATS;
       petDrawStats();
       break;
@@ -481,12 +523,17 @@ void petBegin() {
 void petLoop() {
   petTick();
   petSincronizarAgenda();
+  focoLoop(petView == PV_FOCO);   // o timer anda mesmo durante a pose de recompensa
 
   if (petView == PV_ACTION) {
     if ((int32_t)(millis() - petActionUntil) >= 0) {
       if (petVoltarParaCheck) {
         petVoltarParaCheck = false;
         petAbrirCheck();
+      } else if (petVoltarParaFoco) {
+        petVoltarParaFoco = false;
+        petView = PV_FOCO;
+        focoRedesenhar();
       } else {
         petView = PV_MAIN;
         petRedesenharSePreciso(true);
@@ -500,8 +547,9 @@ void petLoop() {
 
 void petPlus() {
   if (petView == PV_ACTION) return;
+  if (petView == PV_FOCO)  { focoPlus(); return; }
   if (petView == PV_CHECK) { petResponderCheck(false); return; }   // ❌ não concluí
-  if (petView == PV_STATS) {          // qualquer botão volta do Status
+  if (petView == PV_STATS || petView == PV_TAGS) {   // qualquer botão volta
     petView = PV_MAIN;
     petRedesenharSePreciso(true);
     return;
@@ -512,8 +560,9 @@ void petPlus() {
 
 void petBoot() {
   if (petView == PV_ACTION) return;
+  if (petView == PV_FOCO)  { focoBoot(); return; }
   if (petView == PV_CHECK) { petResponderCheck(true); return; }    // ✅ concluí
-  if (petView == PV_STATS) {
+  if (petView == PV_STATS || petView == PV_TAGS) {
     petView = PV_MAIN;
     petRedesenharSePreciso(true);
     return;
@@ -522,7 +571,43 @@ void petBoot() {
 }
 
 void petPwr() {
-  if (petView != PV_CHECK) return;    // na tela de check: "depois" — volta ao gato
+  if (petView == PV_FOCO) { focoPwr(); return; }
+  if (petView != PV_CHECK && petView != PV_TAGS) return;   // check: "depois"; Tags: voltar
+  petView = PV_MAIN;
+  petRedesenharSePreciso(true);
+}
+
+// ─── Pomodoro (chamadas pelo foco.cpp) ───────────────────────────────────────
+
+// Recompensa: +1 de humor e +1 de energia por minuto focado (logica/pomodoro, máx. 50).
+// Com agenda, o humor é recalculado pela semana a cada sincronização; por isso a parte do
+// Pomodoro fica num bônus separado que soma por cima e vai caindo com o tempo.
+void petFocoTerminou(int pontos, bool vemPausa) {
+  petEnergy = clampStat(petEnergy + pontos);
+  if (calendarioConfigurado()) {
+    petBonusHumor = clampStat(petBonusHumor + pontos);
+    petHappy = petAgendaHora ? humorDaSemana(petAgenda.sim, petAgenda.nao, petBonusHumor)
+                             : clampStat(petHappy + pontos);
+  } else {
+    petHappy = clampStat(petHappy + pontos);
+  }
+  petSave();
+  Serial.printf("Foco completo: +%d (humor %d, energia %d)\n", pontos, (int)petHappy, (int)petEnergy);
+
+  char texto[12];
+  snprintf(texto, sizeof(texto), "+%d!", pontos);
+  petStartAction(cat_happy, COR(200, 240, 190), texto);
+  petActionUntil = millis() + PET_RECOMPENSA_MS;
+  petVoltarParaFoco = vemPausa;
+  mostrar();
+}
+
+void petPausaTerminou() {
+  petStartAction(cat_content, COR_CREME, "Bora!");
+  mostrar();
+}
+
+void petVoltarDoFoco() {
   petView = PV_MAIN;
   petRedesenharSePreciso(true);
 }
