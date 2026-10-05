@@ -91,6 +91,7 @@ bool calendarioResumo(time_t desde, time_t inicio, ResumoAgenda &r) {
   r.criados = resposta["criados"] | 0;
   r.sim     = resposta["semana"]["sim"] | 0;
   r.nao     = resposta["semana"]["nao"] | 0;
+  r.hoje    = resposta["hoje"] | -1;
 
   r.nPendentes = 0;
   for (JsonObject p : resposta["pendentes"].as<JsonArray>()) {

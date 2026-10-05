@@ -37,3 +37,8 @@
 #define AGENDA_RECOVER_ENERGY_PH      2     // com agenda, a energia vem dos checks; só descansa devagar
 #define AGENDA_SYNC_A_CADA_MS         (5UL * 60UL * 1000UL)  // busca a agenda a cada 5 min
 #define AGENDA_RETENTAR_MS            (60UL * 1000UL)        // se falhar, tenta de novo em 1 min
+
+// ─── Tela de descanso (bloqueio por inatividade) ─────────────────────────────
+#define BLOQUEIO_APOS_MS   (60UL * 1000UL)   // sem tocar em botão por 1 min → tela de descanso
+#define BLOQUEIO_BRILHO    12                // luz quase apagada (0–255)
+#define BRILHO_NORMAL      255

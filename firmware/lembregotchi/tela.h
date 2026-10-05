@@ -11,8 +11,18 @@ extern Arduino_GFX *gfx;   // Canvas criado em lembregotchi.ino
 #define COR_CREME   COR(255, 244, 214)
 #define COR_CINZA   COR(140, 120, 100)
 
+// Estilo "Pala Note" (menus, Home, Pomodoro): fundo branco, texto preto
+#define COR_PAPEL   RGB565_WHITE
+#define COR_TINTA_P RGB565_BLACK
+
 // Escreve um texto centralizado (a fonte padrão tem 6 px de largura por letra)
 void textoCentro(int y, const char *txt, int tamanho, uint16_t cor);
+
+// Cabeçalho Pala Note: título em negrito à esquerda + linha embaixo (ocupa y 0–44)
+void cabecalho(const char *titulo);
+
+// "Pílula" Pala Note: contorno arredondado; selecionada = preenchida de preto com texto branco
+void pilula(int x, int y, int w, int h, const char *texto, bool selecionada, int tamanho = 2);
 
 // Mostra o quadro: o canvas é desenhado na memória e enviado de uma vez (sem piscar)
 void mostrar();

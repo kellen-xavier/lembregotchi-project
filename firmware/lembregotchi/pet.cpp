@@ -10,7 +10,7 @@
 #include "pet.h"
 #include "rede.h"
 #include "calendario.h"
-#include "foco.h"
+#include "app.h"
 #include "tela.h"
 #include "src/cat_sprites/cat_sprites.h"
 
@@ -32,22 +32,23 @@ static uint32_t petProximoSync = 0;             // millis() da próxima tentativ
 static time_t   petAgendaHora = 0;              // quando sincronizou com sucesso pela última vez
 static ResumoAgenda petAgenda = {};             // último resumo; pendentes[0] é o próximo "Concluiu?"
 
-enum PetView { PV_MAIN, PV_STATS, PV_ACTION, PV_CHECK, PV_FOCO };
+enum PetView { PV_MAIN, PV_STATS, PV_ACTION, PV_CHECK };
 static PetView  petView = PV_MAIN;
 static int      petSel  = 0;           // índice em ACOES
 static uint32_t petActionUntil = 0;
 static bool     petVoltarParaCheck = false;   // depois da pose, volta para o próximo pendente
-static bool     petVoltarParaFoco  = false;   // depois da recompensa, volta para a pausa do Pomodoro
+static bool     petVoltarAoMenu    = false;   // depois da pose, volta ao menu (veio de lá)
+static bool     petCheckDoMenu     = false;   // "Concluiu?" aberto pelo menu (Agenda) → sai para o menu
+static bool     petAtivo           = false;   // a tela do gato/agenda/status está na frente?
 
 static uint32_t petUltimoTick   = 0;
 static uint32_t petUltimoSalvar = 0;
 static int      petUltimoDesenho = -1; // "assinatura" do que está na tela
 
-#define N_ACOES 6
-enum Acao { A_COMER, A_BRINCAR, A_CARINHO, A_AGENDA, A_FOCO, A_STATUS };
-static const char *ACOES[N_ACOES] = { "Comer", "Brincar", "Carinho", "Agenda", "Foco", "Status" };
-
-#define PET_RECOMPENSA_MS 3000   // quanto tempo a tela de recompensa do Pomodoro fica
+// Agenda, Status e Pomodoro ficam no menu (app.cpp); no gato, só as ações de cuidar dele
+#define N_ACOES 3
+enum Acao { A_COMER, A_BRINCAR, A_CARINHO };
+static const char *ACOES[N_ACOES] = { "Comer", "Brincar", "Carinho" };
 
 static void petAbrirCheck();   // definida mais abaixo
 
@@ -161,6 +162,7 @@ static void petSincronizarAgenda() {
                 r.criados, r.sim, r.nao, r.nPendentes);
 
   // Evento novo terminou: o gato pergunta sozinho. Na tela de check, atualiza a lista.
+  if (!petAtivo) return;
   if (petView == PV_CHECK || (chegouPendente && petView == PV_MAIN)) petAbrirCheck();
 }
 
@@ -237,10 +239,7 @@ static void petDrawMain() {
   gfx->fillRoundRect(30, 184, 180, 34, 10, tinta);
   gfx->fillTriangle(42, 201, 52, 193, 52, 209, fundo);     // ◀
   gfx->fillTriangle(198, 201, 188, 193, 188, 209, fundo);  // ▶
-  char rotulo[16];
-  if (petSel == A_AGENDA && petAgenda.nPendentes > 0) snprintf(rotulo, sizeof(rotulo), "Agenda(%d)", petAgenda.nPendentes);
-  else                                         snprintf(rotulo, sizeof(rotulo), "%s", ACOES[petSel]);
-  textoCentro(194, rotulo, 2, fundo);
+  textoCentro(194, ACOES[petSel], 2, fundo);
 
   // Bolinhas mostrando em qual das ações estamos
   for (int i = 0; i < N_ACOES; i++) {
@@ -384,13 +383,16 @@ static void petDrawCheck() {
   textoCentro(230, "PWR = depois", 1, COR(140, 120, 100));
 }
 
-// Abre a tela de check com o primeiro pendente (ou volta ao gato se não houver)
+// Sai do "Concluiu?" / Status: volta para onde veio (menu ou gato)
+static void petSairParaOrigem() {
+  if (petCheckDoMenu) { petCheckDoMenu = false; appVoltarAoMenu(); return; }
+  petView = PV_MAIN;
+  petRedesenharSePreciso(true);
+}
+
+// Abre a tela de check com o primeiro pendente (ou sai, se não houver mais)
 static void petAbrirCheck() {
-  if (petAgenda.nPendentes == 0) {
-    petView = PV_MAIN;
-    petRedesenharSePreciso(true);
-    return;
-  }
+  if (petAgenda.nPendentes == 0) { petSairParaOrigem(); return; }
   petView = PV_CHECK;
   petDrawCheck();
   mostrar();
@@ -447,18 +449,6 @@ static void petDoAction(int sel) {
       petSave();
       petStartAction(cat_purr, COR(255, 200, 220), "Purr...");
       break;
-    case A_AGENDA:
-      if (petAgenda.nPendentes > 0) { petAbrirCheck(); return; }
-      petStartAction(cat_happy, COR(200, 240, 190), "Em dia!");
-      break;
-    case A_FOCO:
-      petView = PV_FOCO;
-      focoAbrir();
-      return;
-    case A_STATUS:
-      petView = PV_STATS;
-      petDrawStats();
-      break;
   }
   mostrar();
 }
@@ -470,23 +460,23 @@ void petBegin() {
   petUltimoTick = millis();
   petUltimoSalvar = millis();
   petView = PV_MAIN;
-  petRedesenharSePreciso(true);
 }
 
-void petLoop() {
+// Tempo e agenda andam sempre; desenhar, só quando a tela é do gato (ativo)
+void petLoop(bool ativo) {
+  petAtivo = ativo;
   petTick();
   petSincronizarAgenda();
-  focoLoop(petView == PV_FOCO);   // o timer anda mesmo durante a pose de recompensa
+  if (!ativo) return;
 
   if (petView == PV_ACTION) {
     if ((int32_t)(millis() - petActionUntil) >= 0) {
       if (petVoltarParaCheck) {
         petVoltarParaCheck = false;
         petAbrirCheck();
-      } else if (petVoltarParaFoco) {
-        petVoltarParaFoco = false;
-        petView = PV_FOCO;
-        focoRedesenhar();
+      } else if (petVoltarAoMenu) {
+        petVoltarAoMenu = false;
+        appVoltarAoMenu();
       } else {
         petView = PV_MAIN;
         petRedesenharSePreciso(true);
@@ -498,44 +488,70 @@ void petLoop() {
   if (petView == PV_MAIN) petRedesenharSePreciso(false);
 }
 
+void petAbrirGato() {
+  petAtivo = true;
+  petCheckDoMenu = false;
+  petView = PV_MAIN;
+  petRedesenharSePreciso(true);
+}
+
+void petAbrirAgenda() {
+  petAtivo = true;
+  petCheckDoMenu = true;
+  if (petAgenda.nPendentes > 0) { petAbrirCheck(); return; }
+  petVoltarAoMenu = true;           // nada pendente: comemora e volta ao menu
+  petStartAction(cat_happy, COR(200, 240, 190), "Em dia!");
+  mostrar();
+}
+
+void petAbrirStatus() {
+  petAtivo = true;
+  petCheckDoMenu = true;            // sai do Status para o menu
+  petView = PV_STATS;
+  petDrawStats();
+  mostrar();
+}
+
+void petRedesenhar() {
+  switch (petView) {
+    case PV_STATS:  petDrawStats(); mostrar(); break;
+    case PV_CHECK:  petDrawCheck(); mostrar(); break;
+    case PV_ACTION:                      // a pose acabou enquanto a tela estava em descanso
+      petView = PV_MAIN;
+      petVoltarParaCheck = petVoltarAoMenu = false;
+      petRedesenharSePreciso(true);
+      break;
+    default:        petRedesenharSePreciso(true); break;
+  }
+}
+
 void petPlus() {
   if (petView == PV_ACTION) return;
-  if (petView == PV_FOCO)  { focoPlus(); return; }
   if (petView == PV_CHECK) { petResponderCheck(false); return; }   // ❌ não concluí
-  if (petView == PV_STATS) {          // qualquer botão volta do Status
-    petView = PV_MAIN;
-    petRedesenharSePreciso(true);
-    return;
-  }
+  if (petView == PV_STATS) { petSairParaOrigem(); return; }        // qualquer botão sai do Status
   petSel = (petSel + 1) % N_ACOES;
   petRedesenharSePreciso(true);
 }
 
 void petBoot() {
   if (petView == PV_ACTION) return;
-  if (petView == PV_FOCO)  { focoBoot(); return; }
   if (petView == PV_CHECK) { petResponderCheck(true); return; }    // ✅ concluí
-  if (petView == PV_STATS) {
-    petView = PV_MAIN;
-    petRedesenharSePreciso(true);
-    return;
-  }
+  if (petView == PV_STATS) { petSairParaOrigem(); return; }
   petDoAction(petSel);
 }
 
 void petPwr() {
-  if (petView == PV_FOCO) { focoPwr(); return; }
-  if (petView != PV_CHECK) return;    // na tela de check: "depois" — volta ao gato
-  petView = PV_MAIN;
-  petRedesenharSePreciso(true);
+  if (petView == PV_ACTION) return;
+  if (petView == PV_CHECK || petView == PV_STATS) { petSairParaOrigem(); return; }   // "depois"
+  appVoltarAoMenu();                // do gato, PWR volta ao menu
 }
 
-// ─── Pomodoro (chamadas pelo foco.cpp) ───────────────────────────────────────
+// ─── Pomodoro e Home ─────────────────────────────────────────────────────────
 
 // Recompensa: +1 de humor e +1 de energia por minuto focado (logica/pomodoro, máx. 50).
 // Com agenda, o humor é recalculado pela semana a cada sincronização; por isso a parte do
 // Pomodoro fica num bônus separado que soma por cima e vai caindo com o tempo.
-void petFocoTerminou(int pontos, bool vemPausa) {
+void petRecompensar(int pontos) {
   petEnergy = clampStat(petEnergy + pontos);
   if (calendarioConfigurado()) {
     petBonusHumor = clampStat(petBonusHumor + pontos);
@@ -546,21 +562,7 @@ void petFocoTerminou(int pontos, bool vemPausa) {
   }
   petSave();
   Serial.printf("Foco completo: +%d (humor %d, energia %d)\n", pontos, (int)petHappy, (int)petEnergy);
-
-  char texto[12];
-  snprintf(texto, sizeof(texto), "+%d!", pontos);
-  petStartAction(cat_happy, COR(200, 240, 190), texto);
-  petActionUntil = millis() + PET_RECOMPENSA_MS;
-  petVoltarParaFoco = vemPausa;
-  mostrar();
 }
 
-void petPausaTerminou() {
-  petStartAction(cat_content, COR_CREME, "Bora!");
-  mostrar();
-}
-
-void petVoltarDoFoco() {
-  petView = PV_MAIN;
-  petRedesenharSePreciso(true);
-}
+int petPendentes() { return petAgenda.nPendentes; }
+int petEventosHoje() { return petAgendaHora ? petAgenda.hoje : -1; }

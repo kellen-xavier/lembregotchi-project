@@ -53,11 +53,15 @@ firmware/
     src/logica/                LÓGICA PURA (sem Arduino) — roda no PC e é testada
       texto.h / texto.cpp      asciiSimples()
       humor.h / humor.cpp      humorDaSemana(sim, nao, bonus), limitarStat()
-      pomodoro.h / pomodoro.cpp  timer do Pomodoro (fases, pausa, recompensa, MM:SS)
+      pomodoro.h / pomodoro.cpp  Pomodoro clássico: modos/tempos, ciclo foco↔descanso, progresso, MM:SS
+      data.h / data.cpp        "04 OUT", "Domingo 04 Out", "HH:MM"
+      bateria.h / bateria.cpp  ADC→mV (×3) e nível % (tabela Waveshare)
+      bloqueio.h / bloqueio.cpp  inatividade → tela de descanso
   lembregotchi/                firmware principal (sketch Arduino)
     lembregotchi.ino           setup/loop, tela (Canvas), botões
-    tela.h / tela.cpp          COR(), cores comuns, textoCentro(), mostrar()
-    foco.h / foco.cpp          telas e botões do Pomodoro ("Foco")
+    app.h / app.cpp            navegação: Home → menu (Gato·Agenda·Status·Pomodoro), tela de descanso
+    tela.h / tela.cpp          COR(), cabecalho()/pilula() (estilo Pala Note), textoCentro(), mostrar()
+    foco.h / foco.cpp          telas e botões do Pomodoro clássico
     config.h                   constantes do bichinho, rede e agenda (pinos vêm da biblioteca)
     pet.h / pet.cpp            estado, tempo, humor, desenho, ações, tela "Concluiu?"
     rede.h / rede.cpp          Wi-Fi + hora (NTP, fuso de Brasília)
@@ -124,7 +128,11 @@ $CLI --config-file $CFG upload  -p /dev/ttyACM0 --fqbn $FQBN firmware/lembregotc
 ## Apps Script (ponte)
 
 - Contrato (POST JSON, sempre com `chave`):
-  - `{"acao":"resumo","desde":<epoch>,"inicio":<epoch>}` → `{ok, agora, criados, pendentes[{id,titulo,fim}], semana{sim,nao}}`
+  - `{"acao":"resumo","desde":<epoch>,"inicio":<epoch>}` → `{ok, agora, criados, pendentes[{id,titulo,fim}], semana{sim,nao}, hoje}`
+  - `hoje` = eventos de hoje que ainda não terminaram (`getEventsForDay`, fuso da agenda) → Home.
+- **Qual agenda:** Propriedade do script `AGENDA_ID` (opcional) → `CalendarApp.getCalendarById`;
+  pode ser de outra conta, compartilhada com "Fazer alterações nos eventos". Sem ela, agenda principal.
+  ID sem acesso → `{"ok":false,"erro":"agenda nao encontrada"}`. O ID é dado pessoal: nunca no repo.
   - `{"acao":"check","id":"…","fim":<epoch>,"feito":true|false}` → grava ✅/❌ no início do título
 - `inicio` = primeira sincronização do aparelho; eventos que terminaram antes são ignorados.
 - O Apps Script responde **302** para `script.googleusercontent.com`; o firmware segue à mão com GET
@@ -208,7 +216,11 @@ Diagnóstico de Wi-Fi: `WiFi.onEvent` com `ARDUINO_EVENT_WIFI_STA_DISCONNECTED` 
 - **Tags (#hashtag) foram REMOVIDAS** a pedido da dona (2026-10-04), em todas as camadas
   (firmware, biblioteca, ponte, testes). O código completo está no commit `e778b15`
   (`git show e778b15`) para quando forem retomadas. Não reintroduzir sem pedido.
-- Ações do gato: Comer, Brincar, Carinho, Agenda, Foco, Status.
+- **Navegação estilo Pala Note** (docs/screen-and-flows/): Home → menu (Gato, Agenda, Status,
+  Pomodoro) → telas; PWR volta. Tela de descanso após 1 min sem botão (exceto com Pomodoro rodando).
+- Ações do Gato: Comer, Brincar, Carinho (Agenda/Status/Pomodoro estão no menu).
+- **Pomodoro clássico**: sem pausa; ciclo foco↔descanso até desistir (clique longo → "Tem certeza?");
+  Baixo 5–30 + 5, Guerreiro 25–55 + 10; recompensa a cada foco; 🔊/🔇 só ícone (som = etapa futura).
 - Recompensa do Pomodoro: +1 humor/energia por minuto (máx. 50); humor vai para `petBonusHumor`
   (somado à taxa da semana, cai −2/h) para não ser apagado pela sincronização.
 - Ponte local `2026-10-04.1` (sem tags). No ar ainda está a `2026-10-03.1` (com tags) — funciona

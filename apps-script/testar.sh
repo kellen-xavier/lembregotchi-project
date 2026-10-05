@@ -44,6 +44,12 @@ if [[ "${1:-}" == "sem-chave" ]]; then
   fi
 elif [[ "$RESPOSTA" == *'"ok":true'* ]]; then
   echo "✅ chave aceita"
+elif [[ "$RESPOSTA" == *'"erro":"agenda nao encontrada"'* ]]; then
+  echo "✅ chave aceita"
+  echo "❌ agenda não encontrada: confira AGENDA_ID em Propriedades do script e o compartilhamento"
+  echo "   (a agenda precisa estar compartilhada com esta conta com \"Fazer alterações nos eventos\")."
+  echo "   Rode testarAgenda no editor do Apps Script para ver o motivo."
+  exit 4
 else
   echo "❌ chave recusada: LEMBREGOTCHI_CHAVE em Propriedades do script ≠ segredos.h"
   echo "   Rode testarChaveConfigurada no editor do Apps Script e confira se dá 64 caracteres."

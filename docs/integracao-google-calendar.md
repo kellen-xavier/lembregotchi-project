@@ -96,3 +96,14 @@ em qualquer app do Google Calendar, sem configurar cores nem criar agendas.
 As tags por hashtag foram **retiradas** do sistema por enquanto, a pedido da dona: a ponte não devolve
 mais `tag`/`tags` (versão `2026-10-04.1`), e o aparelho não tem mais a tela Tags. O código está no
 commit `e778b15`.
+
+## Ajuste (2026-10-04): eventos de hoje
+
+A ponte devolve `hoje`: quantos eventos de hoje ainda não terminaram (`getEventsForDay`, fuso da agenda).
+Usado na linha **EVENTOS** da Home. Versão da ponte: `2026-10-04.2`.
+
+## Ajuste (2026-10-04): agenda de outra conta
+
+Propriedade do script `AGENDA_ID` (opcional): a ponte lê essa agenda (`getCalendarById`) em vez da principal.
+Permite usar a agenda de outra conta Google, compartilhada com "Fazer alterações nos eventos", sem mudar a
+ponte nem o aparelho. Versão da ponte: `2026-10-04.3`.

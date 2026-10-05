@@ -16,6 +16,7 @@ struct ResumoAgenda {
   int    criados;      // eventos novos desde a última sincronização → Comida
   int    sim;          // ✅ nos últimos 7 dias → Humor
   int    nao;          // ❌ ou esquecidos nos últimos 7 dias → Humor
+  int    hoje;         // eventos de hoje que ainda não terminaram (Home); -1 = ponte antiga
   int    nPendentes;   // eventos terminados aguardando "Concluiu?" → passo 7
   EventoPendente pendentes[AGENDA_MAX_PENDENTES];
 };

@@ -1,15 +1,17 @@
 // Lembregotchi — bichinho virtual na Waveshare ESP32-S3 1.54" LCD
 //
-// Controles:
-//   PLUS  → escolhe a próxima ação (Comer, Brincar, Carinho, Agenda, Status)
-//   BOOT  → executa a ação escolhida
-//   na tela de Status, qualquer botão volta
-//   na tela "Concluiu?": BOOT = sim, PLUS = não, PWR = depois
+// Navegação (app.cpp): Home → menu (Gato · Agenda · Status · Pomodoro); tela de descanso após 1 min.
+//
+// Botões, em geral:
+//   PLUS  → próximo item
+//   BOOT  → escolher / confirmar
+//   PWR   → voltar
+//   segurar qualquer um (clique longo) → no timer do Pomodoro, "Tem certeza?" (sair)
 #include <Arduino_GFX_Library.h>
 #include <OneButton.h>
 
 #include "config.h"
-#include "pet.h"
+#include "app.h"
 #include "rede.h"
 
 // Canvas: desenha numa "folha" na memória e manda para a tela de uma vez (sem piscar)
@@ -38,11 +40,14 @@ void setup() {
   gfx->flush();
   redeBegin();
 
-  botaoPlus.attachClick(petPlus);
-  botaoBoot.attachClick(petBoot);
-  botaoPwr.attachClick(petPwr);
+  botaoPlus.attachClick(appPlus);
+  botaoBoot.attachClick(appBoot);
+  botaoPwr.attachClick(appPwr);
+  botaoPlus.attachLongPressStart(appLongo);
+  botaoBoot.attachLongPressStart(appLongo);
+  botaoPwr.attachLongPressStart(appLongo);
 
-  petBegin();
+  appBegin();
   Serial.println("Lembregotchi pronto!");
 }
 
@@ -50,6 +55,6 @@ void loop() {
   botaoBoot.tick();
   botaoPlus.tick();
   botaoPwr.tick();
-  petLoop();
+  appLoop();
   delay(10);
 }

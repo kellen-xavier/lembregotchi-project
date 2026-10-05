@@ -8,3 +8,6 @@
 #include "logica/texto.h"
 #include "logica/humor.h"
 #include "logica/pomodoro.h"
+#include "logica/data.h"
+#include "logica/bateria.h"
+#include "logica/bloqueio.h"

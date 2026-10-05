@@ -717,3 +717,113 @@ imagem **não exige mudar código**.
 | Não ganhou recompensa | apertou PWR (desistiu) antes do fim |
 | Imagem com cores estranhas | `.h` gerado à mão ou de outro tamanho; gere de novo com `make imagem` |
 | Imagem cortada no lugar errado | use `CORTE="x0 y0 x1 y1"` para escolher a área |
+
+---
+
+## Passo 10 — Navegação estilo Pala Note e Pomodoro clássico
+
+Telas e fluxo desenhados em `docs/screen-and-flows/` (veja `flow-pomodoro-classic.jpg`).
+
+### Navegação
+
+```
+Home ──BOOT──► menu ──► Gato      (Comer · Brincar · Carinho)
+  ▲              │ ──► Agenda    ("Concluiu?" ou "Em dia!")
+  └────PWR───────┘ ──► Status
+                   ──► Pomodoro
+Sem tocar em botão por 1 min → tela de descanso (relógio + data, luz baixa). Qualquer botão acorda.
+```
+
+| Botão | Em geral |
+|---|---|
+| **PLUS** | próximo item |
+| **BOOT** | escolher / confirmar |
+| **PWR** | voltar |
+| **segurar** qualquer um | no timer do Pomodoro: "Tem certeza?" (sair) |
+
+> O "Notes" do Pala Note não existe aqui: no lugar dele está o **Gato**.
+
+### Home
+
+| Linha | De onde vem |
+|---|---|
+| `Menu` + bateria | ADC do GPIO 1 × 3 → tabela da Waveshare (`logica/bateria`) |
+| `04 OUT 14:32` | hora da internet (NTP) |
+| `TAREFAS` | eventos esperando "Concluiu?" |
+| `EVENTOS` | eventos de **hoje** que ainda não terminaram (campo `hoje` da ponte) |
+
+### Pomodoro clássico
+
+```
+[Foco Baixo | Foco Guerreiro] → lista de tempos → "25min ⋮" + [Focar] → FOCO 24:59 🔊
+                                                              fim → gato feliz +25 → DESCANSO (imagem)
+                                                                    fim do descanso → FOCO (ciclo 2) …
+segurar no timer → 😿 "Tem certeza?" → [Voltar ao foco] (padrão) / [Sim! Desistir] → menu
+```
+
+| Modo | Foco | Descanso |
+|---|---|---|
+| Foco Baixo | 5, 10, 15, 20, 25, 30 min | 5 min |
+| Foco Guerreiro | 25, 30, 35, 40, 45, 50, 55 min | 10 min |
+
+- **Sem pausa:** o ciclo foco → descanso → foco se repete até você desistir.
+- **Recompensa** a cada foco completo: +1 de humor e energia por minuto (máx. 50).
+- **🔊/🔇:** BOOT no timer troca o ícone. O som de verdade (chip ES8311) fica para uma etapa futura.
+- **Melhorias além do desenho:** contador de ciclos, barra de progresso, e "Voltar ao foco" já
+  selecionado no "Tem certeza?" (um clique sem querer não desiste).
+
+### Tela de descanso
+
+Depois de 1 min sem botão, a tela mostra **hora grande + "Domingo 04 Out"** e baixa a luz de fundo
+para quase nada (`BLOQUEIO_BRILHO` em `config.h`). O brilho usa **PWM** (`placaBrilho()`): o LED liga e
+desliga milhares de vezes por segundo, e o olho vê como "mais fraco".
+Com o Pomodoro rodando, a tela **não** entra em descanso: o timer é a tela.
+
+### Organização do código
+
+| Arquivo | Papel |
+|---|---|
+| `app.cpp` | navegação: Home, menu, tela de descanso; manda cada botão para a tela da vez |
+| `pet.cpp` | gato, Agenda ("Concluiu?") e Status; ao sair, chama `appVoltarAoMenu()` |
+| `foco.cpp` | todas as telas do Pomodoro |
+| `tela.cpp` | `cabecalho()` e `pilula()` (estilo Pala Note), `textoCentro()`, `mostrar()` |
+| biblioteca `logica/` | `pomodoro` (ciclo, modos, progresso), `data`, `bateria`, `bloqueio` — todas testadas |
+
+| Problema | Causa provável |
+|---|---|
+| Home mostra `EVENTOS --` | ainda não sincronizou, ou a ponte no ar é anterior à `2026-10-04.2` |
+| Tela apagou | é a tela de descanso: aperte qualquer botão |
+| Segurar não sai do timer | segure ~1 s; o clique curto em BOOT só troca o ícone de som |
+
+---
+
+## Passo 11 — Usar a agenda de outra conta Google (AGENDA_ID)
+
+A ponte roda na conta que a implantou. Para ler a agenda de **outra** conta, sem mudar a ponte de lugar:
+
+**1. Na conta da agenda** (a "outra"): Google Calendar → ⚙️ **Configurações** → na esquerda, a agenda →
+- **Compartilhar com pessoas específicas** → adicione a conta da ponte com
+  **"Fazer alterações nos eventos"** (precisa disso para gravar ✅/❌);
+- desça até **Integrar agenda** e copie o **ID da agenda** (ex.: `fulana@gmail.com`).
+
+**2. Na conta da ponte:** aceite o convite de compartilhamento (chega por e-mail ou aparece em
+"Outras agendas").
+
+**3. No Apps Script:**
+- cole o `Codigo.gs` novo (`VERSAO = '2026-10-04.3'`) e salve;
+- **⚙️ Configurações do projeto → Propriedades do script → Adicionar:** `AGENDA_ID` = o ID copiado;
+- execute **`testarAgenda`**: o log deve dizer `AGENDA_ID: <nome> (compartilhada com você)`;
+- **Implantar → Gerenciar implantações → ✏️ → Nova versão → Implantar**.
+
+**4. No terminal:** `apps-script/testar.sh` → ✅ versão, ✅ chave.
+
+O aparelho **não muda**: mesma URL, mesma chave. Para voltar à agenda principal, apague `AGENDA_ID`.
+
+> O ID da agenda é um dado pessoal (geralmente um e-mail): ele fica **só** nas Propriedades do
+> script, nunca no código ou no repositório.
+
+| Problema | Causa provável |
+|---|---|
+| `agenda nao encontrada` | ID errado, convite não aceito, ou a agenda não foi compartilhada com a conta da ponte |
+| ✅ não aparece no evento | compartilhada só com "Ver todos os detalhes": precisa de **"Fazer alterações nos eventos"** |
+| Continua lendo a agenda antiga | não reimplantou a nova versão, ou `AGENDA_ID` com nome diferente |
